@@ -1,0 +1,101 @@
+import numpy as np
+import pandas as pd
+from config import RHO_AIR, CP_AIR, H_E
+
+
+def cos_incidence(theta_s_deg, phi_s_deg, tilt_deg, azimuth_deg):
+    # cos(incidence angle) for plane
+    ths = np.deg2rad(theta_s_deg)
+    phs = np.deg2rad(phi_s_deg)
+    thp = np.deg2rad(tilt_deg)
+    php = np.deg2rad(azimuth_deg)
+    return np.sin(ths) * np.sin(thp) * np.cos(phs - php) + np.cos(ths) * np.cos(thp)
+
+
+def plane_irradiance(I_dir, I_dif, cos_i, tilt):
+    # Total irradiance on tilted plane
+    cos_tilt = np.cos(np.deg2rad(tilt))
+    F_sky = (1.0 + cos_tilt) / 2.0
+    return np.maximum(0.0, I_dir * np.maximum(0.0, cos_i)) + I_dif * F_sky
+
+
+def sol_air_temp(T_out, I_p, alpha, epsilon, I_LW, h_e):
+    # Sol-air temperature calculation
+    LW = 0.0 if I_LW is None else (epsilon * I_LW)
+    return T_out + (alpha * I_p - LW) / h_e
+
+
+def run_hourly(weather, planes, air, T_heat, T_cool, gains=None, kitchen_kw=0.0, kitchen_on=None):
+    # Calculate hourly loads
+    req_cols = ['timestamp','T_out_C','I_dir_Wm2','I_dif_Wm2','theta_s_deg','phi_s_deg']
+    for col in req_cols:
+        if col not in weather.columns:
+            raise ValueError(f"Missing: {col}")
+
+    w = weather.copy().reset_index(drop=True)
+    n = len(w)
+    I_LW = w['I_LW_Wm2'].values if 'I_LW_Wm2' in w.columns else None
+    T_gnd = w['T_ground_C'].values if 'T_ground_C' in w.columns else None
+
+    Q_trans_h = np.zeros(n)
+    Q_trans_c = np.zeros(n)
+    Q_solar = np.zeros(n)
+
+    # Calculate loads for each plane
+    for p in planes:
+        cos_i = cos_incidence(w['theta_s_deg'].values, w['phi_s_deg'].values, p.tilt_deg, p.azimuth_deg)
+        I_p = plane_irradiance(w['I_dir_Wm2'].values, w['I_dif_Wm2'].values, cos_i, p.tilt_deg)
+
+        if p.is_opaque():
+            if p.ground_contact:
+                if T_gnd is None:
+                    raise ValueError(f"{p.name} needs T_ground_C")
+                T_boundary = T_gnd
+            else:
+                if p.alpha is None or p.epsilon is None:
+                    raise ValueError(f"{p.name} needs alpha/epsilon")
+                T_boundary = sol_air_temp(w['T_out_C'].values, I_p, p.alpha, p.epsilon, I_LW, H_E)
+
+            Q_trans_h += p.U * p.area_m2 * (T_boundary - T_heat)
+            Q_trans_c += p.U * p.area_m2 * (T_boundary - T_cool)
+
+        elif p.is_window():
+            Q_trans_h += p.U * p.area_m2 * (w['T_out_C'].values - T_heat)
+            Q_trans_c += p.U * p.area_m2 * (w['T_out_C'].values - T_cool)
+            if p.g is None:
+                raise ValueError(f"{p.name} needs g")
+            Fsh = 1.0 if p.F_sh is None else p.F_sh
+            Q_solar += p.g * p.area_m2 * I_p * Fsh
+
+    # Air loads
+    V_inf = air.ACH_infiltration_h * air.V_zone_m3 / 3600.0
+    Q_air_h = RHO_AIR * CP_AIR * (air.Vdot_vent_m3s * (1.0 - air.eta_HRV) + V_inf) * (w['T_out_C'].values - T_heat)
+    Q_air_c = RHO_AIR * CP_AIR * (air.Vdot_vent_m3s * (1.0 - air.eta_HRV) + V_inf) * (w['T_out_C'].values - T_cool)
+
+    # Internal gains
+    Q_int = np.zeros(n)
+    if gains:
+        Q_int = gains.total_kw() * 1000.0 * np.ones(n)
+
+    Q_kitchen = np.zeros(n)
+    if kitchen_kw > 0.0 and kitchen_on is not None:
+        k = kitchen_on.astype(bool).to_numpy()
+        Q_kitchen[k] = kitchen_kw * 1000.0
+
+    # Total loads
+    Q_heat = np.maximum(0.0, -(Q_trans_h + Q_air_h) - Q_solar - Q_int - Q_kitchen)
+    Q_cool = np.maximum(0.0, Q_trans_c + Q_air_c + Q_solar + Q_int + Q_kitchen)
+
+    return pd.DataFrame({
+        'timestamp': w['timestamp'],
+        'T_out_C': w['T_out_C'],
+        'Q_trans_h_W': Q_trans_h,
+        'Q_air_h_W': Q_air_h,
+        'Q_heat_W': Q_heat,
+        'Q_trans_c_W': Q_trans_c,
+        'Q_air_c_W': Q_air_c,
+        'Q_solar_W': Q_solar,
+        'Q_int_W': Q_int,
+        'Q_kitchen_W': Q_kitchen,
+        'Q_cool_W': Q_cool,
+    })
