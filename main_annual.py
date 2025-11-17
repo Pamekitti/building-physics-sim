@@ -13,7 +13,7 @@ from weather import load_epw_weather
 import matplotlib.pyplot as plt
 
 
-def plot_annual_energy(results, floor_area):
+def plot_annual_energy(results):
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
     # Monthly energy consumption
@@ -63,9 +63,10 @@ def plot_annual_energy(results, floor_area):
                        ha='center', va='bottom', fontsize=10)
 
     # Energy intensity
-    heat_intensity = total_heat / floor_area
-    cool_intensity = total_cool / floor_area
-    total_intensity = total_energy / floor_area
+    from config import ATEMP
+    heat_intensity = total_heat / ATEMP
+    cool_intensity = total_cool / ATEMP
+    total_intensity = total_energy / ATEMP
 
     categories_int = ['Heating', 'Cooling', 'Total']
     values_int = [heat_intensity, cool_intensity, total_intensity]
@@ -201,19 +202,17 @@ def main():
 
     air = AirSide(V_zone_m3=BUILDING_VOLUME, Vdot_vent_m3s=VENT_FLOW,
                   eta_HRV=HRV_EFF, ACH_infiltration_h=INFILTRATION_ACH)
-    gains = InternalGains(Q_equip_kW=EQUIP_GAIN, Q_occ_kW=OCC_GAIN, Q_light_kW=LIGHT_GAIN)
 
-    # Kitchen schedule (average between heating and cooling)
-    daily_schedule = [False] * 24
-    for hour in [7, 8, 12, 13, 18, 19]:
-        daily_schedule[hour] = True
+    # NO internal gains for heating (conservative)
+    # This gives worst-case heating load without internal heat offsets
+    gains_none = None
 
-    # Expand to full year
-    num_days = len(weather) // 24
-    kitchen_schedule = pd.Series(daily_schedule * num_days + daily_schedule[:len(weather) % 24])
+    # No kitchen schedule needed (0 gains)
+    kitchen_schedule = pd.Series([False] * len(weather))
 
     print("Running annual simulation...")
-    results = run_hourly(weather, planes, air, T_HEAT, T_COOL, gains, KITCHEN_GAIN, kitchen_schedule)
+    print("(No internal gains - conservative heating calculation)")
+    results = run_hourly(weather, planes, air, T_HEAT, T_COOL, gains_none, 0.0, kitchen_schedule)
     print("Simulation complete!")
     print("")
 
@@ -223,10 +222,9 @@ def main():
     total_energy_kWh = total_heat_kWh + total_cool_kWh
 
     # Calculate energy intensity
-    floor_area = FLOOR_AREA
-    heat_intensity = total_heat_kWh / floor_area
-    cool_intensity = total_cool_kWh / floor_area
-    total_intensity = total_energy_kWh / floor_area
+    heat_intensity = total_heat_kWh / ATEMP
+    cool_intensity = total_cool_kWh / ATEMP
+    total_intensity = total_energy_kWh / ATEMP
 
     # Peak loads
     peak_heat_kW = results['Q_heat_W'].max() / 1000
@@ -252,7 +250,7 @@ def main():
     os.makedirs('plots', exist_ok=True)
     print("Generating annual energy plots...")
 
-    fig1 = plot_annual_energy(results, floor_area)
+    fig1 = plot_annual_energy(results)
     fig1.savefig('plots/annual_energy.png', dpi=150, bbox_inches='tight')
 
     fig2 = plot_load_breakdown(results)

@@ -34,6 +34,9 @@ UG_WALL_U = 0.18
 UG_FLOOR_U = 0.34
 
 # Underground geometry
-FLOOR_AREA = 1272.0
+FLOOR_AREA = 1272.0  # Ground floor footprint for heat transfer calc
 PERIMETER = 207.0
 UG_WALL_HEIGHT = 2.0
+
+# Total building area
+ATEMP = 5816.0  # Total heated floor area (all floors)
