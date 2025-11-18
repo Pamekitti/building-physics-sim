@@ -20,9 +20,11 @@ def plane_irradiance(I_dir, I_dif, cos_i, tilt):
 
 
 def sol_air_temp(T_out, I_p, alpha, epsilon, I_LW, h_e):
-    # Sol-air temperature calculation
-    LW = 0.0 if I_LW is None else (epsilon * I_LW)
-    return T_out + (alpha * I_p - LW) / h_e
+    # Sol-air temperature calculation (simplified ASHRAE approach)
+    # Ignores longwave radiation effects for simplicity (standard practice)
+    # T_sol = T_out + (alpha * I_solar) / h_e
+    # This ensures T_sol >= T_out always
+    return T_out + (alpha * I_p) / h_e
 
 
 def run_hourly(weather, planes, air, T_heat, T_cool, gains=None, kitchen_kw=0.0, kitchen_on=None):
@@ -50,14 +52,26 @@ def run_hourly(weather, planes, air, T_heat, T_cool, gains=None, kitchen_kw=0.0,
             if p.ground_contact:
                 if T_gnd is None:
                     raise ValueError(f"{p.name} needs T_ground_C")
-                T_boundary = T_gnd
+                T_boundary_h = T_gnd
+                T_boundary_c = T_gnd
             else:
                 if p.alpha is None or p.epsilon is None:
                     raise ValueError(f"{p.name} needs alpha/epsilon")
-                T_boundary = sol_air_temp(w['T_out_C'].values, I_p, p.alpha, p.epsilon, I_LW, H_E)
 
-            Q_trans_h += p.U * p.area_m2 * (T_boundary - T_heat)
-            Q_trans_c += p.U * p.area_m2 * (T_boundary - T_cool)
+                # Heating: use T_out (conservative - ignore solar gains)
+                T_boundary_h = w['T_out_C'].values
+
+                # Cooling: use T_sol only if T_sol > T_out (conservative - ignore radiative cooling)
+                T_sol = sol_air_temp(w['T_out_C'].values, I_p, p.alpha, p.epsilon, I_LW, H_E)
+                T_boundary_c = np.maximum(T_sol, w['T_out_C'].values)
+
+            Q_trans_h += p.U * p.area_m2 * (T_boundary_h - T_heat)
+
+            # For cooling: ground contact should not provide free cooling (only count if it's a heat gain)
+            if p.ground_contact:
+                Q_trans_c += np.maximum(0.0, p.U * p.area_m2 * (T_boundary_c - T_cool))
+            else:
+                Q_trans_c += p.U * p.area_m2 * (T_boundary_c - T_cool)
 
         elif p.is_window():
             Q_trans_h += p.U * p.area_m2 * (w['T_out_C'].values - T_heat)
@@ -87,9 +101,11 @@ def run_hourly(weather, planes, air, T_heat, T_cool, gains=None, kitchen_kw=0.0,
     # All gains are positive (heat entering)
 
     # Heating load needed (positive value)
-    Q_heat = np.maximum(0.0, -Q_trans_h - Q_air_h - Q_solar - Q_int - Q_kitchen)
+    # Conservative design: exclude solar/internal gains (worst-case = no free heat)
+    Q_heat = np.maximum(0.0, -Q_trans_h - Q_air_h)
 
     # Cooling load needed (positive value)
+    # Realistic design: include all heat gains
     Q_cool = np.maximum(0.0, Q_trans_c + Q_air_c + Q_solar + Q_int + Q_kitchen)
 
     df = pd.DataFrame({

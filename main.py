@@ -9,7 +9,7 @@ from config import *
 from building import Plane, AirSide, InternalGains
 from physics import run_hourly
 from weather import load_epw_weather
-from visualize import plot_temp_overview, plot_solar_radiation, plot_sun_path, plot_temp_heatmap, plot_hourly_stacked_bar, plot_heat_distribution
+from visualize import plot_temp_overview, plot_solar_radiation, plot_sun_path, plot_temp_heatmap, plot_hourly_stacked_bar, plot_heat_distribution, plot_hourly_stacked_bar_cooling, plot_heat_distribution_4pies
 import matplotlib.pyplot as plt
 
 def main():
@@ -33,13 +33,19 @@ def main():
     # find coldest day
     weather['Date'] = weather['timestamp'].dt.date
     daily_min = weather.groupby('Date')['T_out_C'].min().reset_index()
-    design_day = daily_min.iloc[daily_min['T_out_C'].idxmin()]['Date']
-    design_weather = weather[weather['Date'] == design_day].copy()
+    design_day_cold = daily_min.iloc[daily_min['T_out_C'].idxmin()]['Date']
+    design_weather_cold = weather[weather['Date'] == design_day_cold].copy()
 
-    tmin = design_weather['T_out_C'].min()
-    tmax = design_weather['T_out_C'].max()
-    tavg = design_weather['T_out_C'].mean()
-    solar_max = design_weather['I_dir_Wm2'].max()
+    # find hottest day
+    daily_max = weather.groupby('Date')['T_out_C'].max().reset_index()
+    design_day_hot = daily_max.iloc[daily_max['T_out_C'].idxmax()]['Date']
+    design_weather_hot = weather[weather['Date'] == design_day_hot].copy()
+
+    # Cold day stats
+    tmin = design_weather_cold['T_out_C'].min()
+    tmax = design_weather_cold['T_out_C'].max()
+    tavg = design_weather_cold['T_out_C'].mean()
+    solar_max = design_weather_cold['I_dir_Wm2'].max()
 
     os.makedirs('plots', exist_ok=True)
     print("Generating weather plots...")
@@ -92,8 +98,18 @@ def main():
 
     kitchen = pd.Series([False] * 24)
 
-    results = run_hourly(design_weather, planes, air, T_HEAT, T_COOL, None, 0.0, kitchen)
-    peak_load = results['Q_heat_W'].max() / 1000
+    # Internal gains for cooling (realistic occupancy)
+    gains_cooling = InternalGains(Q_equip_kW=EQUIP_GAIN, Q_occ_kW=OCC_GAIN, Q_light_kW=LIGHT_GAIN)
+
+    # Run simulation for coldest day
+    # Heating: conservative (no internal gains), Cooling: realistic (with internal gains)
+    results_cold = run_hourly(design_weather_cold, planes, air, T_HEAT, T_COOL, gains_cooling, KITCHEN_GAIN, kitchen)
+    peak_heat = results_cold['Q_heat_W'].max() / 1000
+
+    # Run simulation for hottest day
+    # Heating: conservative (no internal gains), Cooling: realistic (with internal gains)
+    results_hot = run_hourly(design_weather_hot, planes, air, T_HEAT, T_COOL, gains_cooling, KITCHEN_GAIN, kitchen)
+    peak_cool = results_hot['Q_cool_W'].max() / 1000
 
     total_UA = sum(p.U * p.area_m2 for p in planes)
     wall_area = sum(p.area_m2 for p in planes if p.is_opaque() and p.tilt_deg == 90 and not p.ground_contact)
@@ -108,24 +124,48 @@ def main():
     print(f"  Floor area: {floor_area:.1f} m²")
     print(f"  Total UA: {total_UA:.1f} W/K")
     print(f"")
-    print(f"Design Day ({design_day}):")
+
+    # Coldest day info
+    print(f"Coldest Day ({design_day_cold}):")
     print(f"  Temperature: Min {tmin:.1f}°C, Max {tmax:.1f}°C, Avg {tavg:.1f}°C")
     print(f"  Max Solar: {solar_max:.0f} W/m²")
-    print(f"  Peak Heating Load: {peak_load:.1f} kW")
+    print(f"  Peak Heating Load: {peak_heat:.1f} kW")
     print(f"")
 
-    # generate hourly heat balance plots
+    # Hottest day info
+    hot_tmin = design_weather_hot['T_out_C'].min()
+    hot_tmax = design_weather_hot['T_out_C'].max()
+    hot_tavg = design_weather_hot['T_out_C'].mean()
+    hot_solar_max = design_weather_hot['I_dir_Wm2'].max()
+    print(f"Hottest Day ({design_day_hot}):")
+    print(f"  Temperature: Min {hot_tmin:.1f}°C, Max {hot_tmax:.1f}°C, Avg {hot_tavg:.1f}°C")
+    print(f"  Max Solar: {hot_solar_max:.0f} W/m²")
+    print(f"  Peak Cooling Load: {peak_cool:.1f} kW")
+    print(f"")
+
+    # generate design day plots
     print("Generating design day analysis...")
     # Calculate yearly max solar elevation
     yearly_solar_elev_max = (90 - weather['theta_s_deg']).max()
-    fig_bar = plot_hourly_stacked_bar(results, solar_elev_max_year=yearly_solar_elev_max)
-    fig_bar.savefig('plots/hourly_stacked_bar.png', dpi=150, bbox_inches='tight')
-    fig_pie = plot_heat_distribution(results)
-    fig_pie.savefig('plots/heat_distribution.png', dpi=150, bbox_inches='tight')
+
+    # Coldest day (can have both heating and cooling)
+    fig_bar_cold = plot_hourly_stacked_bar(results_cold, solar_elev_max_year=yearly_solar_elev_max,
+                                           weather=design_weather_cold, planes=planes)
+    fig_bar_cold.savefig('plots/hourly_stacked_bar_coldest.png', dpi=150, bbox_inches='tight')
+    fig_pie_cold = plot_heat_distribution_4pies(results_cold)
+    fig_pie_cold.savefig('plots/heat_distribution_coldest.png', dpi=150, bbox_inches='tight')
+
+    # Hottest day (can have both heating and cooling)
+    fig_bar_hot = plot_hourly_stacked_bar_cooling(results_hot, solar_elev_max_year=yearly_solar_elev_max,
+                                                   weather=design_weather_hot, planes=planes)
+    fig_bar_hot.savefig('plots/hourly_stacked_bar_hottest.png', dpi=150, bbox_inches='tight')
+    fig_pie_hot = plot_heat_distribution_4pies(results_hot)
+    fig_pie_hot.savefig('plots/heat_distribution_hottest.png', dpi=150, bbox_inches='tight')
+
     plt.close('all')
     print("Saved design day analysis")
 
-    return results
+    return results_cold, results_hot
 
 
 if __name__ == '__main__':
