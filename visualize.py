@@ -14,6 +14,12 @@ def plot_temp_overview(weather):
     axes[0, 0].spines['top'].set_visible(False)
     axes[0, 0].spines['right'].set_visible(False)
 
+    # Add y-axis padding
+    temp_min = weather['T_out_C'].min()
+    temp_max = weather['T_out_C'].max()
+    temp_range = temp_max - temp_min
+    axes[0, 0].set_ylim(temp_min - temp_range * 0.1, temp_max + temp_range * 0.1)
+
     # Temp distribution
     axes[0, 1].hist(weather['T_out_C'], bins=40, color='#34495E',
                     edgecolor='white', linewidth=0.5)
@@ -38,6 +44,12 @@ def plot_temp_overview(weather):
     axes[1, 0].grid(True, alpha=0.2, linestyle='-', linewidth=0.5)
     axes[1, 0].spines['top'].set_visible(False)
     axes[1, 0].spines['right'].set_visible(False)
+
+    # Add y-axis padding
+    monthly_min = min(monthly_out.min(), monthly_gnd.min())
+    monthly_max = max(monthly_out.max(), monthly_gnd.max())
+    monthly_range = monthly_max - monthly_min
+    axes[1, 0].set_ylim(monthly_min - monthly_range * 0.1, monthly_max + monthly_range * 0.1)
 
     # Design conditions
     temps = weather['T_out_C']
@@ -72,6 +84,14 @@ def plot_solar_radiation(weather):
     axes[0, 0].spines['top'].set_visible(False)
     axes[0, 0].spines['right'].set_visible(False)
 
+    # Add y-axis padding and info
+    dir_max = weather['I_dir_Wm2'].max()
+    dir_avg = weather['I_dir_Wm2'].mean()
+    axes[0, 0].set_ylim(0, dir_max * 1.15)
+    axes[0, 0].text(0.02, 0.98, f'Max: {dir_max:.0f} W/m²\nAvg: {dir_avg:.0f} W/m²',
+                    transform=axes[0, 0].transAxes, fontsize=9,
+                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+
     # Diffuse radiation over year
     axes[0, 1].plot(weather['timestamp'], weather['I_dif_Wm2'],
                     color='#95A5A6', linewidth=0.8, alpha=0.7)
@@ -81,6 +101,14 @@ def plot_solar_radiation(weather):
     axes[0, 1].spines['top'].set_visible(False)
     axes[0, 1].spines['right'].set_visible(False)
 
+    # Add y-axis padding and info
+    dif_max = weather['I_dif_Wm2'].max()
+    dif_avg = weather['I_dif_Wm2'].mean()
+    axes[0, 1].set_ylim(0, dif_max * 1.15)
+    axes[0, 1].text(0.02, 0.98, f'Max: {dif_max:.0f} W/m²\nAvg: {dif_avg:.0f} W/m²',
+                    transform=axes[0, 1].transAxes, fontsize=9,
+                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+
     # Infrared radiation over year
     axes[1, 0].plot(weather['timestamp'], weather['I_LW_Wm2'],
                     color='#8E44AD', linewidth=0.8, alpha=0.7)
@@ -89,6 +117,16 @@ def plot_solar_radiation(weather):
     axes[1, 0].grid(True, alpha=0.2, linestyle='-', linewidth=0.5)
     axes[1, 0].spines['top'].set_visible(False)
     axes[1, 0].spines['right'].set_visible(False)
+
+    # Add y-axis padding and info
+    ir_min = weather['I_LW_Wm2'].min()
+    ir_max = weather['I_LW_Wm2'].max()
+    ir_avg = weather['I_LW_Wm2'].mean()
+    ir_range = ir_max - ir_min
+    axes[1, 0].set_ylim(ir_min - ir_range * 0.1, ir_max + ir_range * 0.15)
+    axes[1, 0].text(0.02, 0.98, f'Max: {ir_max:.0f} W/m²\nAvg: {ir_avg:.0f} W/m²\nMin: {ir_min:.0f} W/m²',
+                    transform=axes[1, 0].transAxes, fontsize=9,
+                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
     # Monthly average solar
     monthly_dir = weather.groupby(weather['timestamp'].dt.month)['I_dir_Wm2'].mean()
@@ -122,7 +160,7 @@ def plot_sun_path(weather):
     ax.plot(weather['timestamp'], solar_elev, color='#E67E22', linewidth=0.8, alpha=0.7)
 
     # Horizon line
-    ax.axhline(y=0, color='#E74C3C', linestyle='--', linewidth=1.5, alpha=0.7)
+    ax.axhline(y=0, color='#E74C3C', linestyle='--', linewidth=1.5, alpha=0.7, label='Horizon')
 
     ax.set_xlabel('Date')
     ax.set_ylabel('Solar Elevation (°)')
@@ -130,6 +168,18 @@ def plot_sun_path(weather):
     ax.grid(True, alpha=0.2, linestyle='-', linewidth=0.5)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
+    ax.legend(frameon=False, loc='upper right')
+
+    # Add y-axis padding and info
+    elev_max = solar_elev.max()
+    elev_min = solar_elev.min()
+    elev_range = elev_max - elev_min
+    ax.set_ylim(elev_min - elev_range * 0.1, elev_max + elev_range * 0.15)
+
+    # Add statistics
+    ax.text(0.02, 0.98, f'Max Elevation: {elev_max:.1f}°\nMin Elevation: {elev_min:.1f}°',
+            transform=ax.transAxes, fontsize=9,
+            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
     plt.tight_layout()
     return fig
@@ -173,6 +223,179 @@ def plot_temp_heatmap(weather):
             if not np.isnan(val):
                 text = ax.text(j, i, f'{val:.1f}',
                               ha="center", va="center", color="black", fontsize=8)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_hourly_stacked_bar(results, solar_elev_max_year=None):
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+
+    hours = results['timestamp'].dt.hour
+    width = 0.8
+    t_out = results['T_out_C'].values
+
+    # Heat OUT (losses) - shown as positive values
+    trans = abs(results['Q_trans_h_W'].values / 1000)
+    air = abs(results['Q_air_h_W'].values / 1000)
+
+    ax1.bar(hours, trans, width, color='#1A5490', alpha=0.8, label='Transmission')
+    ax1.bar(hours, air, width, bottom=trans, color='#5DADE2', alpha=0.8, label='Ventilation')
+
+    ax1.set_xlabel('Hour of Day')
+    ax1.set_ylabel('Power (kW)')
+    ax1.set_title('Heat OUT')
+    ax1.set_xticks(range(0, 24, 2))
+    ax1.legend(frameon=False, loc='upper left')
+    ax1.grid(True, alpha=0.3, axis='y', linestyle='-', linewidth=0.5)
+    ax1.spines['top'].set_visible(False)
+
+    # Set y-axis limits with padding
+    max_out = (trans + air).max()
+    ax1.set_ylim(0, max_out * 1.30)
+
+    # Add temperature line on secondary axis
+    ax1_temp = ax1.twinx()
+    ax1_temp.plot(hours, t_out, color='#2C3E50', linewidth=2, marker='o', markersize=4, label='Outdoor Temp')
+    ax1_temp.set_ylabel('Temperature (°C)')
+    ax1_temp.spines['top'].set_visible(False)
+    ax1_temp.legend(frameon=False, loc='upper right')
+
+    # Set temperature y-axis limits with padding
+    temp_min, temp_max = t_out.min(), t_out.max()
+    temp_range = temp_max - temp_min
+    ax1_temp.set_ylim(temp_min - temp_range * 0.15, temp_max + temp_range * 0.5)
+
+    # Add solar elevation on third y-axis
+    if 'theta_s_deg' in results.columns:
+        ax1_solar = ax1.twinx()
+        ax1_solar.spines['right'].set_position(('outward', 60))
+        solar_elev = 90 - results['theta_s_deg'].values
+        ax1_solar.plot(hours, solar_elev, color='#F39C12', linewidth=2, linestyle='--', alpha=1, label='Solar Elev')
+        ax1_solar.set_ylabel('Solar Elevation (°)', color='#F39C12')
+        ax1_solar.tick_params(axis='y', labelcolor='#F39C12')
+        ax1_solar.spines['top'].set_visible(False)
+        elev_max = solar_elev_max_year if solar_elev_max_year is not None else solar_elev.max()
+        ax1_solar.set_ylim(0, elev_max * 1.2)
+
+    # Heat IN (gains + HVAC) - shown as positive values, Solar on top
+    solar = results['Q_solar_W'].values / 1000
+    hvac = results['Q_heat_W'].values / 1000
+
+    ax2.bar(hours, hvac, width, color='#E74C3C', alpha=0.9, label='HVAC')
+    ax2.bar(hours, solar, width, bottom=hvac, color='#F39C12', alpha=0.8, label='Solar')
+
+    # Add horizontal line for peak HVAC
+    peak_hvac = hvac.max()
+    ax2.axhline(y=peak_hvac, color='#E74C3C', linestyle='--', linewidth=1.2, alpha=0.6, label=f'Peak HVAC: {peak_hvac:.1f} kW')
+
+    ax2.set_xlabel('Hour of Day')
+    ax2.set_ylabel('Power (kW)')
+    ax2.set_title('Heat IN')
+    ax2.set_xticks(range(0, 24, 2))
+
+    # Combine all legends
+    handles, labels = ax2.get_legend_handles_labels()
+    ax2.legend(handles, labels, frameon=False, loc='upper left')
+
+    ax2.grid(True, alpha=0.3, axis='y', linestyle='-', linewidth=0.5)
+    ax2.spines['top'].set_visible(False)
+
+    # Set y-axis limits with padding
+    max_in = (solar + hvac).max()
+    ax2.set_ylim(0, max_in * 1.30)
+
+    # Add temperature line on secondary axis
+    ax2_temp = ax2.twinx()
+    ax2_temp.plot(hours, t_out, color='#2C3E50', linewidth=2, marker='o', markersize=4, label='Outdoor Temp')
+    ax2_temp.set_ylabel('Temperature (°C)')
+    ax2_temp.spines['top'].set_visible(False)
+    ax2_temp.legend(frameon=False, loc='upper right')
+
+    # Set temperature y-axis limits with padding
+    ax2_temp.set_ylim(temp_min - temp_range * 0.15, temp_max + temp_range * 0.5)
+
+    # Add solar elevation on third y-axis
+    if 'theta_s_deg' in results.columns:
+        ax2_solar = ax2.twinx()
+        ax2_solar.spines['right'].set_position(('outward', 60))
+        solar_elev = 90 - results['theta_s_deg'].values
+        ax2_solar.plot(hours, solar_elev, color='#F39C12', linewidth=2, linestyle='--', alpha=1, label='Solar Elev')
+        ax2_solar.set_ylabel('Solar Elevation (°)', color='#F39C12')
+        ax2_solar.tick_params(axis='y', labelcolor='#F39C12')
+        ax2_solar.spines['top'].set_visible(False)
+        elev_max_use = solar_elev_max_year if solar_elev_max_year is not None else solar_elev.max()
+        ax2_solar.set_ylim(0, elev_max_use * 1.2)
+
+    # Add IR radiation average as text
+    if 'I_LW_Wm2' in results.columns:
+        ir_avg = results['I_LW_Wm2'].mean()
+        ax2.text(0.98, 0.03, f'IR Avg: {ir_avg:.0f} W/m²',
+                transform=ax2.transAxes, fontsize=9,
+                verticalalignment='bottom', horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='lavender', alpha=0.7))
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_heat_distribution(results):
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 10))
+
+    # Pie chart 1 - Heat OUT (losses)
+    total_trans = abs(results['Q_trans_h_W'].sum()) / 1000
+    total_air = abs(results['Q_air_h_W'].sum()) / 1000
+
+    losses = [total_trans, total_air]
+    loss_labels = [f'Transmission\n{total_trans:.1f} kWh', f'Ventilation\n{total_air:.1f} kWh']
+    loss_colors = ['#1A5490', '#5DADE2']
+
+    wedges, texts, autotexts = ax1.pie(losses, labels=loss_labels, colors=loss_colors,
+                                        autopct='%1.1f%%', startangle=90)
+    for autotext in autotexts:
+        autotext.set_color('white')
+        autotext.set_fontsize(11)
+        autotext.set_weight('bold')
+
+    total_loss = total_trans + total_air
+    ax1.set_title(f'Heat OUT\nTotal: {total_loss:.1f} kWh')
+
+    # Pie chart 2 - Heat IN (gains + HVAC)
+    total_solar = abs(results['Q_solar_W'].sum()) / 1000
+    total_hvac = abs(results['Q_heat_W'].sum()) / 1000
+    total_int = abs(results['Q_int_W'].sum()) / 1000
+    total_kitchen = abs(results['Q_kitchen_W'].sum()) / 1000
+
+    gains = []
+    gain_labels = []
+    gain_colors = []
+
+    if total_solar > 0:
+        gains.append(total_solar)
+        gain_labels.append(f'Solar\n{total_solar:.1f} kWh')
+        gain_colors.append('#F39C12')
+    if total_hvac > 0:
+        gains.append(total_hvac)
+        gain_labels.append(f'HVAC\n{total_hvac:.1f} kWh')
+        gain_colors.append('#E74C3C')
+    if total_int > 0:
+        gains.append(total_int)
+        gain_labels.append(f'Internal\n{total_int:.1f} kWh')
+        gain_colors.append('#9B59B6')
+    if total_kitchen > 0:
+        gains.append(total_kitchen)
+        gain_labels.append(f'Kitchen\n{total_kitchen:.1f} kWh')
+        gain_colors.append('#16A085')
+
+    wedges, texts, autotexts = ax2.pie(gains, labels=gain_labels, colors=gain_colors,
+                                        autopct='%1.1f%%', startangle=90)
+    for autotext in autotexts:
+        autotext.set_color('white')
+        autotext.set_fontsize(11)
+        autotext.set_weight('bold')
+
+    total_gain = sum(gains)
+    ax2.set_title(f'Heat IN\nTotal: {total_gain:.1f} kWh')
 
     plt.tight_layout()
     return fig

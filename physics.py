@@ -82,20 +82,34 @@ def run_hourly(weather, planes, air, T_heat, T_cool, gains=None, kitchen_kw=0.0,
         k = kitchen_on.astype(bool).to_numpy()
         Q_kitchen[k] = kitchen_kw * 1000.0
 
-    # Total loads
-    Q_heat = np.maximum(0.0, -(Q_trans_h + Q_air_h) - Q_solar - Q_int - Q_kitchen)
+    # Sign convention: heat INTO building = positive, heat OUT = negative
+    # Q_trans_h and Q_air_h are naturally negative when T_out < T_in (heat out)
+    # All gains are positive (heat entering)
+
+    # Heating load needed (positive value)
+    Q_heat = np.maximum(0.0, -Q_trans_h - Q_air_h - Q_solar - Q_int - Q_kitchen)
+
+    # Cooling load needed (positive value)
     Q_cool = np.maximum(0.0, Q_trans_c + Q_air_c + Q_solar + Q_int + Q_kitchen)
 
-    return pd.DataFrame({
+    df = pd.DataFrame({
         'timestamp': w['timestamp'],
         'T_out_C': w['T_out_C'],
-        'Q_trans_h_W': Q_trans_h,
-        'Q_air_h_W': Q_air_h,
-        'Q_heat_W': Q_heat,
-        'Q_trans_c_W': Q_trans_c,
-        'Q_air_c_W': Q_air_c,
-        'Q_solar_W': Q_solar,
-        'Q_int_W': Q_int,
-        'Q_kitchen_W': Q_kitchen,
-        'Q_cool_W': Q_cool,
+        'Q_trans_h_W': Q_trans_h,     # negative (heat out)
+        'Q_air_h_W': Q_air_h,         # negative (heat out)
+        'Q_heat_W': Q_heat,           # positive (energy added)
+        'Q_trans_c_W': Q_trans_c,     # positive (heat in)
+        'Q_air_c_W': Q_air_c,         # positive (heat in)
+        'Q_solar_W': Q_solar,         # positive (heat in)
+        'Q_int_W': Q_int,             # positive (heat in)
+        'Q_kitchen_W': Q_kitchen,     # positive (heat in)
+        'Q_cool_W': Q_cool,           # positive (energy removed)
     })
+
+    # Add solar and IR data if available
+    if 'theta_s_deg' in w.columns:
+        df['theta_s_deg'] = w['theta_s_deg']
+    if 'I_LW_Wm2' in w.columns:
+        df['I_LW_Wm2'] = w['I_LW_Wm2']
+
+    return df
