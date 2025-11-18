@@ -30,15 +30,19 @@ def main():
     print(f"  Max solar (diffuse): {weather['I_dif_Wm2'].max():.0f} W/m²")
     print("")
 
-    # find coldest day
+    # find coldest day using 0.4th percentile (design heating condition)
     weather['Date'] = weather['timestamp'].dt.date
     daily_min = weather.groupby('Date')['T_out_C'].min().reset_index()
-    design_day_cold = daily_min.iloc[daily_min['T_out_C'].idxmin()]['Date']
+    temp_04_percentile = daily_min['T_out_C'].quantile(0.004)  # 0.4th percentile
+    # Find the day closest to this percentile
+    design_day_cold = daily_min.iloc[(daily_min['T_out_C'] - temp_04_percentile).abs().idxmin()]['Date']
     design_weather_cold = weather[weather['Date'] == design_day_cold].copy()
 
-    # find hottest day
+    # find hottest day using 99.6th percentile (design cooling condition)
     daily_max = weather.groupby('Date')['T_out_C'].max().reset_index()
-    design_day_hot = daily_max.iloc[daily_max['T_out_C'].idxmax()]['Date']
+    temp_996_percentile = daily_max['T_out_C'].quantile(0.996)  # 99.6th percentile
+    # Find the day closest to this percentile
+    design_day_hot = daily_max.iloc[(daily_max['T_out_C'] - temp_996_percentile).abs().idxmin()]['Date']
     design_weather_hot = weather[weather['Date'] == design_day_hot].copy()
 
     # Cold day stats
@@ -123,19 +127,21 @@ def main():
     print(f"  Total UA: {total_UA:.1f} W/K")
     print(f"")
 
-    # Coldest day info
-    print(f"Coldest Day ({design_day_cold}):")
+    # Coldest day info (0.4th percentile design condition)
+    print(f"Design Heating Day - 0.4% Percentile ({design_day_cold}):")
+    print(f"  Design temperature: {temp_04_percentile:.1f}°C (0.4th percentile)")
     print(f"  Temperature: Min {tmin:.1f}°C, Max {tmax:.1f}°C, Avg {tavg:.1f}°C")
     print(f"  Max Solar: {solar_max:.0f} W/m²")
     print(f"  Peak Heating Load: {peak_heat:.1f} kW")
     print(f"")
 
-    # Hottest day info
+    # Hottest day info (99.6th percentile design condition)
     hot_tmin = design_weather_hot['T_out_C'].min()
     hot_tmax = design_weather_hot['T_out_C'].max()
     hot_tavg = design_weather_hot['T_out_C'].mean()
     hot_solar_max = design_weather_hot['I_dir_Wm2'].max()
-    print(f"Hottest Day ({design_day_hot}):")
+    print(f"Design Cooling Day - 99.6% Percentile ({design_day_hot}):")
+    print(f"  Design temperature: {temp_996_percentile:.1f}°C (99.6th percentile)")
     print(f"  Temperature: Min {hot_tmin:.1f}°C, Max {hot_tmax:.1f}°C, Avg {hot_tavg:.1f}°C")
     print(f"  Max Solar: {hot_solar_max:.0f} W/m²")
     print(f"  Peak Cooling Load: {peak_cool:.1f} kW")
