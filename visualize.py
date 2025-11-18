@@ -256,52 +256,26 @@ def plot_hourly_stacked_bar(results, solar_elev_max_year=None, weather=None, pla
 
     # Add temperature line on secondary axis
     ax1_temp = ax1.twinx()
-    ax1_temp.plot(hours, t_out, color='#2C3E50', linewidth=2, marker='o', markersize=4, label='T_out')
+    ax1_temp.plot(hours, t_out, color='#2C3E50', linewidth=2, marker='o', markersize=4, label='Outdoor Temp')
 
-    # Calculate and plot sol-air temperature if weather data provided
-    if weather is not None and planes is not None:
-        from physics import cos_incidence, plane_irradiance, sol_air_temp
-        from config import H_E
+    # Add heating setpoint line
+    from config import T_HEAT
+    ax1_temp.axhline(y=T_HEAT, color='black', linestyle='--', linewidth=1, alpha=0.6, label=f'Heating Setpoint ({T_HEAT}°C)')
 
-        # Calculate T-sol for south wall (typical surface)
-        south_wall = next((p for p in planes if 'WW-S' in p.name and p.is_opaque() and not p.ground_contact), None)
-        if south_wall is not None:
-            cos_i = cos_incidence(weather['theta_s_deg'].values, weather['phi_s_deg'].values,
-                                south_wall.tilt_deg, south_wall.azimuth_deg)
-            I_p = plane_irradiance(weather['I_dir_Wm2'].values, weather['I_dif_Wm2'].values,
-                                 cos_i, south_wall.tilt_deg)
-            I_LW = weather['I_LW_Wm2'].values if 'I_LW_Wm2' in weather.columns else None
-            t_sol_wall = sol_air_temp(weather['T_out_C'].values, I_p, south_wall.alpha,
-                                     south_wall.epsilon, I_LW, H_E)
-            ax1_temp.plot(hours, t_sol_wall, color='#E67E22', linewidth=2, linestyle='--',
-                         marker='s', markersize=3, alpha=0.8, label='T_sol (wall)')
-
-        # Calculate T-sol for roof
-        roof = next((p for p in planes if 'WW-RN' in p.name and p.is_opaque()), None)
-        if roof is not None:
-            cos_i = cos_incidence(weather['theta_s_deg'].values, weather['phi_s_deg'].values,
-                                roof.tilt_deg, roof.azimuth_deg)
-            I_p = plane_irradiance(weather['I_dir_Wm2'].values, weather['I_dif_Wm2'].values,
-                                 cos_i, roof.tilt_deg)
-            t_sol_roof = sol_air_temp(weather['T_out_C'].values, I_p, roof.alpha,
-                                    roof.epsilon, I_LW, H_E)
-            ax1_temp.plot(hours, t_sol_roof, color='#C0392B', linewidth=2, linestyle=':',
-                         marker='^', markersize=3, alpha=0.8, label='T_sol (roof)')
+    # Add solar elevation to temperature legend
+    temp_handles, temp_labels = ax1_temp.get_legend_handles_labels()
+    if 'theta_s_deg' in results.columns:
+        # Get solar elevation handle
+        solar_elev_line = plt.Line2D([0], [0], color='#F39C12', linewidth=2, linestyle='--', label='Solar Elev')
+        temp_handles.append(solar_elev_line)
+        temp_labels.append('Solar Elev')
 
     ax1_temp.set_ylabel('Temperature (°C)')
     ax1_temp.spines['top'].set_visible(False)
-    ax1_temp.legend(frameon=False, loc='upper right')
+    ax1_temp.legend(temp_handles, temp_labels, frameon=False, loc='upper right')
 
-    # Set temperature y-axis limits with padding (include T-sol in range)
+    # Set temperature y-axis limits with padding
     temp_min, temp_max = t_out.min(), t_out.max()
-    if weather is not None and planes is not None:
-        all_temps = [t_out]
-        if south_wall is not None:
-            all_temps.append(t_sol_wall)
-        if roof is not None:
-            all_temps.append(t_sol_roof)
-        temp_min = min(np.min(t) for t in all_temps)
-        temp_max = max(np.max(t) for t in all_temps)
     temp_range = temp_max - temp_min
     ax1_temp.set_ylim(temp_min - temp_range * 0.15, temp_max + temp_range * 0.5)
 
@@ -403,7 +377,6 @@ def plot_heat_distribution(results):
     total_solar = abs(results['Q_solar_W'].sum()) / 1000
     total_hvac = abs(results['Q_heat_W'].sum()) / 1000
     total_int = abs(results['Q_int_W'].sum()) / 1000
-    total_kitchen = abs(results['Q_kitchen_W'].sum()) / 1000
 
     gains = []
     gain_labels = []
@@ -421,10 +394,6 @@ def plot_heat_distribution(results):
         gains.append(total_int)
         gain_labels.append(f'Internal\n{total_int:.1f} kWh')
         gain_colors.append('#9B59B6')
-    if total_kitchen > 0:
-        gains.append(total_kitchen)
-        gain_labels.append(f'Kitchen\n{total_kitchen:.1f} kWh')
-        gain_colors.append('#16A085')
 
     wedges, texts, autotexts = ax2.pie(gains, labels=gain_labels, colors=gain_colors,
                                         autopct='%1.1f%%', startangle=90)
@@ -473,52 +442,26 @@ def plot_hourly_stacked_bar_cooling(results, solar_elev_max_year=None, weather=N
 
     # Add temperature line on secondary axis
     ax1_temp = ax1.twinx()
-    ax1_temp.plot(hours, t_out, color='#2C3E50', linewidth=2, marker='o', markersize=4, label='T_out')
+    ax1_temp.plot(hours, t_out, color='#2C3E50', linewidth=2, marker='o', markersize=4, label='Outdoor Temp')
 
-    # Calculate and plot sol-air temperature if weather data provided
-    if weather is not None and planes is not None:
-        from physics import cos_incidence, plane_irradiance, sol_air_temp
-        from config import H_E
+    # Add cooling setpoint line
+    from config import T_COOL
+    ax1_temp.axhline(y=T_COOL, color='black', linestyle='--', linewidth=1, alpha=0.6, label=f'Cooling Setpoint ({T_COOL}°C)')
 
-        # Calculate T-sol for south wall
-        south_wall = next((p for p in planes if 'WW-S' in p.name and p.is_opaque() and not p.ground_contact), None)
-        if south_wall is not None:
-            cos_i = cos_incidence(weather['theta_s_deg'].values, weather['phi_s_deg'].values,
-                                south_wall.tilt_deg, south_wall.azimuth_deg)
-            I_p = plane_irradiance(weather['I_dir_Wm2'].values, weather['I_dif_Wm2'].values,
-                                 cos_i, south_wall.tilt_deg)
-            I_LW = weather['I_LW_Wm2'].values if 'I_LW_Wm2' in weather.columns else None
-            t_sol_wall = sol_air_temp(weather['T_out_C'].values, I_p, south_wall.alpha,
-                                     south_wall.epsilon, I_LW, H_E)
-            ax1_temp.plot(hours, t_sol_wall, color='#E67E22', linewidth=2, linestyle='--',
-                         marker='s', markersize=3, alpha=0.8, label='T_sol (wall)')
-
-        # Calculate T-sol for roof
-        roof = next((p for p in planes if 'WW-RN' in p.name and p.is_opaque()), None)
-        if roof is not None:
-            cos_i = cos_incidence(weather['theta_s_deg'].values, weather['phi_s_deg'].values,
-                                roof.tilt_deg, roof.azimuth_deg)
-            I_p = plane_irradiance(weather['I_dir_Wm2'].values, weather['I_dif_Wm2'].values,
-                                 cos_i, roof.tilt_deg)
-            t_sol_roof = sol_air_temp(weather['T_out_C'].values, I_p, roof.alpha,
-                                    roof.epsilon, I_LW, H_E)
-            ax1_temp.plot(hours, t_sol_roof, color='#C0392B', linewidth=2, linestyle=':',
-                         marker='^', markersize=3, alpha=0.8, label='T_sol (roof)')
+    # Add solar elevation to temperature legend
+    temp_handles, temp_labels = ax1_temp.get_legend_handles_labels()
+    if 'theta_s_deg' in results.columns:
+        # Get solar elevation handle
+        solar_elev_line = plt.Line2D([0], [0], color='#F39C12', linewidth=2, linestyle='--', label='Solar Elev')
+        temp_handles.append(solar_elev_line)
+        temp_labels.append('Solar Elev')
 
     ax1_temp.set_ylabel('Temperature (°C)')
     ax1_temp.spines['top'].set_visible(False)
-    ax1_temp.legend(frameon=False, loc='upper right')
+    ax1_temp.legend(temp_handles, temp_labels, frameon=False, loc='upper right')
 
-    # Set temperature y-axis limits with padding (include T-sol)
+    # Set temperature y-axis limits with padding
     temp_min, temp_max = t_out.min(), t_out.max()
-    if weather is not None and planes is not None:
-        all_temps = [t_out]
-        if south_wall is not None:
-            all_temps.append(t_sol_wall)
-        if roof is not None:
-            all_temps.append(t_sol_roof)
-        temp_min = min(np.min(t) for t in all_temps)
-        temp_max = max(np.max(t) for t in all_temps)
     temp_range = temp_max - temp_min
     ax1_temp.set_ylim(temp_min - temp_range * 0.15, temp_max + temp_range * 0.5)
 
@@ -593,17 +536,146 @@ def plot_hourly_stacked_bar_cooling(results, solar_elev_max_year=None, weather=N
     return fig
 
 
+def plot_heat_distribution_detailed(results, air, gains, T_heat, T_cool):
+    """Detailed 2-pie chart with ventilation/infiltration and internal gains breakdown"""
+    from config import RHO_AIR, CP_AIR
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 8))
+
+    # Calculate detailed components
+    heating_mask = results['Q_heat_W'] > 0
+    cooling_mask = results['Q_cool_W'] > 0
+
+    # Ventilation and infiltration components
+    V_inf_m3s = air.ACH_infiltration_h * air.V_zone_m3 / 3600.0
+
+    # === PIE 1: HEATING - HEAT OUT (detailed losses) ===
+    if heating_mask.any():
+        # Transmission (same as before)
+        total_trans_h = abs(results.loc[heating_mask, 'Q_trans_h_W'].sum()) / 1000
+
+        # Split ventilation into ventilation + infiltration
+        dT_h = results.loc[heating_mask, 'T_out_C'].values - T_heat
+        Q_vent_h = RHO_AIR * CP_AIR * air.Vdot_vent_m3s * (1.0 - air.eta_HRV) * dT_h
+        Q_inf_h = RHO_AIR * CP_AIR * V_inf_m3s * dT_h
+        total_vent_h = abs(Q_vent_h.sum()) / 1000
+        total_inf_h = abs(Q_inf_h.sum()) / 1000
+
+        losses = [total_trans_h, total_vent_h, total_inf_h]
+        loss_labels = [
+            f'Transmission ({total_trans_h:.1f} kWh)',
+            f'Ventilation ({total_vent_h:.1f} kWh)',
+            f'Infiltration ({total_inf_h:.1f} kWh)'
+        ]
+        loss_colors = ['#1A5490', '#5DADE2', '#85C1E9']
+
+        wedges, texts, autotexts = axes[0].pie(losses, colors=loss_colors,
+                                            autopct='%1.1f%%', startangle=45)
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontsize(11)
+            autotext.set_weight('bold')
+
+        axes[0].legend(wedges, loss_labels, loc='center left', bbox_to_anchor=(1, 0, 0.5, 1), fontsize=10)
+
+        total_loss = sum(losses)
+        axes[0].set_title(f'DETAILED - HEATING\nHeat OUT (Losses)\nTotal: {total_loss:.1f} kWh',
+                         fontsize=13, fontweight='bold', pad=20)
+    else:
+        axes[0].text(0.5, 0.5, 'No Heating\nRequired', ha='center', va='center', fontsize=14)
+        axes[0].set_title('DETAILED - HEATING\nHeat OUT (Losses)', fontsize=13, fontweight='bold', pad=20)
+
+    # === PIE 2: COOLING - HEAT IN (detailed gains) ===
+    if cooling_mask.any():
+        # Transmission and ventilation (clipped to positive only)
+        total_trans_c = np.maximum(0, results.loc[cooling_mask, 'Q_trans_c_W'].values).sum() / 1000
+
+        # Split ventilation into ventilation + infiltration
+        dT_c = results.loc[cooling_mask, 'T_out_C'].values - T_cool
+        Q_vent_c = RHO_AIR * CP_AIR * air.Vdot_vent_m3s * (1.0 - air.eta_HRV) * dT_c
+        Q_inf_c = RHO_AIR * CP_AIR * V_inf_m3s * dT_c
+        total_vent_c = np.maximum(0, Q_vent_c).sum() / 1000
+        total_inf_c = np.maximum(0, Q_inf_c).sum() / 1000
+
+        # Solar
+        total_solar_c = results.loc[cooling_mask, 'Q_solar_W'].sum() / 1000
+
+        # Split internal gains into components
+        if gains is not None:
+            n_cool = cooling_mask.sum()
+            total_equip_c = gains.Q_equip_kW * n_cool
+            total_occ_c = gains.Q_occ_kW * n_cool
+            total_light_c = gains.Q_light_kW * n_cool
+        else:
+            total_equip_c = 0.0
+            total_occ_c = 0.0
+            total_light_c = 0.0
+
+        gains_c = []
+        gain_labels_c = []
+        gain_colors_c = []
+
+        # Add all non-zero components
+        if total_trans_c > 0.1:
+            gains_c.append(total_trans_c)
+            gain_labels_c.append(f'Transmission ({total_trans_c:.1f} kWh)')
+            gain_colors_c.append('#E74C3C')
+        if total_vent_c > 0.1:
+            gains_c.append(total_vent_c)
+            gain_labels_c.append(f'Ventilation ({total_vent_c:.1f} kWh)')
+            gain_colors_c.append('#27AE60')
+        if total_inf_c > 0.1:
+            gains_c.append(total_inf_c)
+            gain_labels_c.append(f'Infiltration ({total_inf_c:.1f} kWh)')
+            gain_colors_c.append('#52BE80')
+        if total_solar_c > 0.1:
+            gains_c.append(total_solar_c)
+            gain_labels_c.append(f'Solar ({total_solar_c:.1f} kWh)')
+            gain_colors_c.append('#F39C12')
+        if total_equip_c > 0.1:
+            gains_c.append(total_equip_c)
+            gain_labels_c.append(f'Equipment ({total_equip_c:.1f} kWh)')
+            gain_colors_c.append('#9B59B6')
+        if total_occ_c > 0.1:
+            gains_c.append(total_occ_c)
+            gain_labels_c.append(f'Occupancy ({total_occ_c:.1f} kWh)')
+            gain_colors_c.append('#8E44AD')
+        if total_light_c > 0.1:
+            gains_c.append(total_light_c)
+            gain_labels_c.append(f'Lighting ({total_light_c:.1f} kWh)')
+            gain_colors_c.append('#D68910')
+
+        wedges, texts, autotexts = axes[1].pie(gains_c, colors=gain_colors_c,
+                                            autopct='%1.1f%%', startangle=140)
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontsize(11)
+            autotext.set_weight('bold')
+
+        axes[1].legend(wedges, gain_labels_c, loc='center left', bbox_to_anchor=(1, 0, 0.5, 1), fontsize=10)
+
+        total_gain_c = sum(gains_c)
+        axes[1].set_title(f'DETAILED - COOLING\nHeat IN (Gains)\nTotal: {total_gain_c:.1f} kWh',
+                         fontsize=13, fontweight='bold', pad=20)
+    else:
+        axes[1].text(0.5, 0.5, 'No Cooling\nRequired', ha='center', va='center', fontsize=14)
+        axes[1].set_title('DETAILED - COOLING\nHeat IN (Gains)', fontsize=13, fontweight='bold', pad=20)
+
+    plt.tight_layout()
+    plt.subplots_adjust(wspace=0.5)
+    return fig
+
+
 def plot_heat_distribution_4pies(results):
-    """4-pie chart showing both heating and cooling components"""
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    """2-pie chart: coldest day heating heat OUT and cooling heat IN"""
+    fig, axes = plt.subplots(1, 2, figsize=(16, 8))
 
     # Filter hours when heating is active (Q_heat > 0)
     heating_mask = results['Q_heat_W'] > 0
     # Filter hours when cooling is active (Q_cool > 0)
     cooling_mask = results['Q_cool_W'] > 0
 
-    # === HEATING COMPONENTS ===
-    # Pie 1 - Heat OUT (losses) during heating hours
+    # === PIE 1: HEATING - HEAT OUT (losses) ===
     if heating_mask.any():
         total_trans_h = abs(results.loc[heating_mask, 'Q_trans_h_W'].sum()) / 1000
         total_air_h = abs(results.loc[heating_mask, 'Q_air_h_W'].sum()) / 1000
@@ -612,76 +684,43 @@ def plot_heat_distribution_4pies(results):
         loss_labels = [f'Transmission ({total_trans_h:.1f} kWh)', f'Ventilation ({total_air_h:.1f} kWh)']
         loss_colors = ['#1A5490', '#5DADE2']
 
-        wedges, texts, autotexts = axes[0, 0].pie(losses, colors=loss_colors,
+        wedges, texts, autotexts = axes[0].pie(losses, colors=loss_colors,
                                             autopct='%1.1f%%', startangle=45)
         for autotext in autotexts:
             autotext.set_color('white')
-            autotext.set_fontsize(11)
+            autotext.set_fontsize(12)
             autotext.set_weight('bold')
 
-        axes[0, 0].legend(wedges, loss_labels, loc='center left', bbox_to_anchor=(1, 0, 0.5, 1), fontsize=9)
+        axes[0].legend(wedges, loss_labels, loc='center left', bbox_to_anchor=(1, 0, 0.5, 1), fontsize=11)
 
         total_loss = total_trans_h + total_air_h
-        axes[0, 0].set_title(f'HEATING - Heat OUT\nTotal: {total_loss:.1f} kWh')
+        axes[0].set_title(f'COLDEST DAY - HEATING\nHeat OUT (Losses)\nTotal: {total_loss:.1f} kWh',
+                         fontsize=13, fontweight='bold', pad=20)
     else:
-        axes[0, 0].text(0.5, 0.5, 'No Heating\nRequired', ha='center', va='center', fontsize=14)
-        axes[0, 0].set_title('HEATING - Heat OUT')
+        axes[0].text(0.5, 0.5, 'No Heating\nRequired', ha='center', va='center', fontsize=14)
+        axes[0].set_title('COLDEST DAY - HEATING\nHeat OUT (Losses)', fontsize=13, fontweight='bold', pad=20)
 
-    # Pie 2 - Heat IN (HVAC only) during heating hours
-    # Conservative design: solar and internal gains are excluded from heating calculations
-    if heating_mask.any():
-        total_hvac_h = results.loc[heating_mask, 'Q_heat_W'].sum() / 1000
-
-        gains = []
-        gain_labels = []
-        gain_colors = []
-
-        if total_hvac_h > 0:
-            gains.append(total_hvac_h)
-            gain_labels.append(f'HVAC ({total_hvac_h:.1f} kWh)')
-            gain_colors.append('#E74C3C')
-
-        wedges, texts, autotexts = axes[0, 1].pie(gains, colors=gain_colors,
-                                            autopct='%1.1f%%', startangle=90)
-        for autotext in autotexts:
-            autotext.set_color('white')
-            autotext.set_fontsize(11)
-            autotext.set_weight('bold')
-
-        axes[0, 1].legend(wedges, gain_labels, loc='center left', bbox_to_anchor=(1, 0, 0.5, 1), fontsize=9)
-
-        total_gain = sum(gains)
-        axes[0, 1].set_title(f'HEATING - Heat IN\nTotal: {total_gain:.1f} kWh')
-    else:
-        axes[0, 1].text(0.5, 0.5, 'No Heating\nRequired', ha='center', va='center', fontsize=14)
-        axes[0, 1].set_title('HEATING - Heat IN')
-
-    # === COOLING COMPONENTS ===
-    # Pie 3 - Heat IN (gains) during cooling hours
-    # Use actual values (not clipped) so totals match Heat OUT
+    # === PIE 2: COOLING - HEAT IN (gains) ===
     if cooling_mask.any():
-        # Sum actual values during cooling hours (can be negative for free cooling)
-        total_trans_c = results.loc[cooling_mask, 'Q_trans_c_W'].sum() / 1000
-        total_air_c = results.loc[cooling_mask, 'Q_air_c_W'].sum() / 1000
+        # Clip to 0 if negative (free cooling = helping HVAC, so exclude per design principle)
+        total_trans_c = np.maximum(0, results.loc[cooling_mask, 'Q_trans_c_W'].values).sum() / 1000
+        total_air_c = np.maximum(0, results.loc[cooling_mask, 'Q_air_c_W'].values).sum() / 1000
         total_solar_c = results.loc[cooling_mask, 'Q_solar_W'].sum() / 1000
         total_int_c = results.loc[cooling_mask, 'Q_int_W'].sum() / 1000 if 'Q_int_W' in results.columns else 0.0
-        total_kitchen_c = results.loc[cooling_mask, 'Q_kitchen_W'].sum() / 1000 if 'Q_kitchen_W' in results.columns else 0.0
 
         gains_c = []
         gain_labels_c = []
         gain_colors_c = []
 
-        # Show all non-zero components (even if negative - represents free cooling offset)
-        if abs(total_trans_c) > 0.1:
+        # Show only positive heat gains (conservative design)
+        if total_trans_c > 0.1:
             gains_c.append(total_trans_c)
-            sign = '+' if total_trans_c > 0 else ''
-            gain_labels_c.append(f'Transmission ({sign}{total_trans_c:.1f} kWh)')
-            gain_colors_c.append('#E74C3C' if total_trans_c > 0 else '#5DADE2')
-        if abs(total_air_c) > 0.1:
+            gain_labels_c.append(f'Transmission ({total_trans_c:.1f} kWh)')
+            gain_colors_c.append('#E74C3C')
+        if total_air_c > 0.1:
             gains_c.append(total_air_c)
-            sign = '+' if total_air_c > 0 else ''
-            gain_labels_c.append(f'Ventilation ({sign}{total_air_c:.1f} kWh)')
-            gain_colors_c.append('#27AE60' if total_air_c > 0 else '#95A5A6')
+            gain_labels_c.append(f'Ventilation ({total_air_c:.1f} kWh)')
+            gain_colors_c.append('#27AE60')
         if total_solar_c > 0:
             gains_c.append(total_solar_c)
             gain_labels_c.append(f'Solar ({total_solar_c:.1f} kWh)')
@@ -690,50 +729,25 @@ def plot_heat_distribution_4pies(results):
             gains_c.append(total_int_c)
             gain_labels_c.append(f'Internal ({total_int_c:.1f} kWh)')
             gain_colors_c.append('#9B59B6')
-        if total_kitchen_c > 0:
-            gains_c.append(total_kitchen_c)
-            gain_labels_c.append(f'Kitchen ({total_kitchen_c:.1f} kWh)')
-            gain_colors_c.append('#16A085')
 
-        wedges, texts, autotexts = axes[1, 0].pie(gains_c, colors=gain_colors_c,
+        wedges, texts, autotexts = axes[1].pie(gains_c, colors=gain_colors_c,
                                             autopct='%1.1f%%', startangle=140)
         for autotext in autotexts:
             autotext.set_color('white')
-            autotext.set_fontsize(11)
+            autotext.set_fontsize(12)
             autotext.set_weight('bold')
 
-        axes[1, 0].legend(wedges, gain_labels_c, loc='center left', bbox_to_anchor=(1, 0, 0.5, 1), fontsize=9)
+        axes[1].legend(wedges, gain_labels_c, loc='center left', bbox_to_anchor=(1, 0, 0.5, 1), fontsize=11)
 
         total_gain_c = sum(gains_c)
-        axes[1, 0].set_title(f'COOLING - Heat IN\nTotal: {total_gain_c:.1f} kWh')
+        axes[1].set_title(f'COLDEST DAY - COOLING\nHeat IN (Gains)\nTotal: {total_gain_c:.1f} kWh',
+                         fontsize=13, fontweight='bold', pad=20)
     else:
-        axes[1, 0].text(0.5, 0.5, 'No Cooling\nRequired', ha='center', va='center', fontsize=14)
-        axes[1, 0].set_title('COOLING - Heat IN')
-
-    # Pie 4 - Heat OUT (cooling) during cooling hours
-    if cooling_mask.any():
-        total_cool = results.loc[cooling_mask, 'Q_cool_W'].sum() / 1000
-
-        cooling_parts = [total_cool]
-        cooling_labels = [f'Cooling ({total_cool:.1f} kWh)']
-        cooling_colors = ['#1A5490']
-
-        wedges, texts, autotexts = axes[1, 1].pie(cooling_parts, colors=cooling_colors,
-                                            autopct='%1.1f%%', startangle=90)
-        for autotext in autotexts:
-            autotext.set_color('white')
-            autotext.set_fontsize(11)
-            autotext.set_weight('bold')
-
-        axes[1, 1].legend(wedges, cooling_labels, loc='center left', bbox_to_anchor=(1, 0, 0.5, 1), fontsize=9)
-
-        axes[1, 1].set_title(f'COOLING - Heat OUT\nTotal: {total_cool:.1f} kWh')
-    else:
-        axes[1, 1].text(0.5, 0.5, 'No Cooling\nRequired', ha='center', va='center', fontsize=14)
-        axes[1, 1].set_title('COOLING - Heat OUT')
+        axes[1].text(0.5, 0.5, 'No Cooling\nRequired', ha='center', va='center', fontsize=14)
+        axes[1].set_title('COLDEST DAY - COOLING\nHeat IN (Gains)', fontsize=13, fontweight='bold', pad=20)
 
     plt.tight_layout()
-    plt.subplots_adjust(wspace=0.4, hspace=0.3)
+    plt.subplots_adjust(wspace=0.5)
     return fig
 
 

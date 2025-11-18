@@ -27,7 +27,7 @@ def sol_air_temp(T_out, I_p, alpha, epsilon, I_LW, h_e):
     return T_out + (alpha * I_p) / h_e
 
 
-def run_hourly(weather, planes, air, T_heat, T_cool, gains=None, kitchen_kw=0.0, kitchen_on=None):
+def run_hourly(weather, planes, air, T_heat, T_cool, gains=None):
     # Calculate hourly loads
     req_cols = ['timestamp','T_out_C','I_dir_Wm2','I_dif_Wm2','theta_s_deg','phi_s_deg']
     for col in req_cols:
@@ -91,11 +91,6 @@ def run_hourly(weather, planes, air, T_heat, T_cool, gains=None, kitchen_kw=0.0,
     if gains:
         Q_int = gains.total_kw() * 1000.0 * np.ones(n)
 
-    Q_kitchen = np.zeros(n)
-    if kitchen_kw > 0.0 and kitchen_on is not None:
-        k = kitchen_on.astype(bool).to_numpy()
-        Q_kitchen[k] = kitchen_kw * 1000.0
-
     # Sign convention: heat INTO building = positive, heat OUT = negative
     # Q_trans_h and Q_air_h are naturally negative when T_out < T_in (heat out)
     # All gains are positive (heat entering)
@@ -106,7 +101,7 @@ def run_hourly(weather, planes, air, T_heat, T_cool, gains=None, kitchen_kw=0.0,
 
     # Cooling load needed (positive value)
     # Realistic design: include all heat gains
-    Q_cool = np.maximum(0.0, Q_trans_c + Q_air_c + Q_solar + Q_int + Q_kitchen)
+    Q_cool = np.maximum(0.0, Q_trans_c + Q_air_c + Q_solar + Q_int)
 
     df = pd.DataFrame({
         'timestamp': w['timestamp'],
@@ -118,7 +113,6 @@ def run_hourly(weather, planes, air, T_heat, T_cool, gains=None, kitchen_kw=0.0,
         'Q_air_c_W': Q_air_c,         # positive (heat in)
         'Q_solar_W': Q_solar,         # positive (heat in)
         'Q_int_W': Q_int,             # positive (heat in)
-        'Q_kitchen_W': Q_kitchen,     # positive (heat in)
         'Q_cool_W': Q_cool,           # positive (energy removed)
     })
 

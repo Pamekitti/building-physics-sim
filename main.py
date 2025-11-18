@@ -9,7 +9,7 @@ from config import *
 from building import Plane, AirSide, InternalGains
 from physics import run_hourly
 from weather import load_epw_weather
-from visualize import plot_temp_overview, plot_solar_radiation, plot_sun_path, plot_temp_heatmap, plot_hourly_stacked_bar, plot_heat_distribution, plot_hourly_stacked_bar_cooling, plot_heat_distribution_4pies
+from visualize import plot_temp_overview, plot_solar_radiation, plot_sun_path, plot_temp_heatmap, plot_hourly_stacked_bar, plot_heat_distribution, plot_hourly_stacked_bar_cooling, plot_heat_distribution_4pies, plot_heat_distribution_detailed
 import matplotlib.pyplot as plt
 
 def main():
@@ -96,19 +96,17 @@ def main():
     air = AirSide(V_zone_m3=BUILDING_VOLUME, Vdot_vent_m3s=VENT_FLOW,
                   eta_HRV=HRV_EFF, ACH_infiltration_h=INFILTRATION_ACH)
 
-    kitchen = pd.Series([False] * 24)
-
     # Internal gains for cooling (realistic occupancy)
     gains_cooling = InternalGains(Q_equip_kW=EQUIP_GAIN, Q_occ_kW=OCC_GAIN, Q_light_kW=LIGHT_GAIN)
 
     # Run simulation for coldest day
     # Heating: conservative (no internal gains), Cooling: realistic (with internal gains)
-    results_cold = run_hourly(design_weather_cold, planes, air, T_HEAT, T_COOL, gains_cooling, KITCHEN_GAIN, kitchen)
+    results_cold = run_hourly(design_weather_cold, planes, air, T_HEAT, T_COOL, gains_cooling)
     peak_heat = results_cold['Q_heat_W'].max() / 1000
 
     # Run simulation for hottest day
     # Heating: conservative (no internal gains), Cooling: realistic (with internal gains)
-    results_hot = run_hourly(design_weather_hot, planes, air, T_HEAT, T_COOL, gains_cooling, KITCHEN_GAIN, kitchen)
+    results_hot = run_hourly(design_weather_hot, planes, air, T_HEAT, T_COOL, gains_cooling)
     peak_cool = results_hot['Q_cool_W'].max() / 1000
 
     total_UA = sum(p.U * p.area_m2 for p in planes)
@@ -161,6 +159,13 @@ def main():
     fig_bar_hot.savefig('plots/hourly_stacked_bar_hottest.png', dpi=150, bbox_inches='tight')
     fig_pie_hot = plot_heat_distribution_4pies(results_hot)
     fig_pie_hot.savefig('plots/heat_distribution_hottest.png', dpi=150, bbox_inches='tight')
+
+    # Generate detailed breakdown pie charts
+    fig_detailed_cold = plot_heat_distribution_detailed(results_cold, air, gains_cooling, T_HEAT, T_COOL)
+    fig_detailed_cold.savefig('plots/heat_distribution_coldest_detailed.png', dpi=150, bbox_inches='tight')
+
+    fig_detailed_hot = plot_heat_distribution_detailed(results_hot, air, gains_cooling, T_HEAT, T_COOL)
+    fig_detailed_hot.savefig('plots/heat_distribution_hottest_detailed.png', dpi=150, bbox_inches='tight')
 
     plt.close('all')
     print("Saved design day analysis")
