@@ -9,6 +9,7 @@ from config import *
 from building import Plane, AirSide, InternalGains
 from physics import run_hourly
 from weather import load_epw_weather
+from visualize import plot_heat_distribution_4pies, plot_heat_distribution_detailed
 import matplotlib.pyplot as plt
 
 
@@ -301,11 +302,20 @@ def main():
     fig3 = plot_load_histogram(results)
     fig3.savefig('plots/load_distribution_histogram.png', dpi=150, bbox_inches='tight')
 
+    # Generate pie charts for annual heating and cooling breakdown
+    fig4 = plot_heat_distribution_4pies(results)
+    fig4.savefig('plots/annual_heat_distribution.png', dpi=150, bbox_inches='tight')
+
+    fig5 = plot_heat_distribution_detailed(results, air, gains_cooling, T_HEAT, T_COOL)
+    fig5.savefig('plots/annual_heat_distribution_detailed.png', dpi=150, bbox_inches='tight')
+
     plt.close('all')
     print("Saved plots to plots/ folder:")
     print("  - annual_heating_energy.png (heating focus)")
     print("  - heating_load_breakdown.png (heating components)")
     print("  - load_distribution_histogram.png (load distributions with percentiles)")
+    print("  - annual_heat_distribution.png (2-pie: heating/cooling breakdown)")
+    print("  - annual_heat_distribution_detailed.png (2-pie: detailed components)")
 
     return results
 

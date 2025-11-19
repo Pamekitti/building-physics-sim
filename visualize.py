@@ -2,71 +2,430 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_temp_overview(weather):
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+def plot_monthly_temperature(weather):
+    """Monthly average temperature - academic style"""
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
 
-    # Outdoor temp over year
-    axes[0, 0].plot(weather['timestamp'], weather['T_out_C'],
-                    color='#2C3E50', linewidth=0.8, alpha=0.8)
-    axes[0, 0].set_ylabel('Temperature (°C)')
-    axes[0, 0].set_title('Outdoor Temperature - Typical Year')
-    axes[0, 0].grid(True, alpha=0.2, linestyle='-', linewidth=0.5)
-    axes[0, 0].spines['top'].set_visible(False)
-    axes[0, 0].spines['right'].set_visible(False)
+    monthly_temp = weather.groupby(weather['timestamp'].dt.month)['T_out_C'].mean()
+    months = monthly_temp.index
+    month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-    # Add y-axis padding
-    temp_min = weather['T_out_C'].min()
-    temp_max = weather['T_out_C'].max()
-    temp_range = temp_max - temp_min
-    axes[0, 0].set_ylim(temp_min - temp_range * 0.1, temp_max + temp_range * 0.1)
+    # Outdoor temperature: dark blue-gray with shaded area
+    ax.fill_between(months, monthly_temp.values, alpha=0.15, color='#2E4053', zorder=1)
+    ax.plot(months, monthly_temp.values, marker='o', color='#2E4053',
+            linewidth=2.0, markersize=5, markerfacecolor='#2E4053',
+            markeredgecolor='#2E4053', label='Outdoor Air', zorder=3)
 
-    # Temp distribution
-    axes[0, 1].hist(weather['T_out_C'], bins=40, color='#34495E',
-                    edgecolor='white', linewidth=0.5)
-    axes[0, 1].set_xlabel('Temperature (°C)')
-    axes[0, 1].set_ylabel('Frequency (hours)')
-    axes[0, 1].set_title('Temperature Distribution')
-    axes[0, 1].grid(True, alpha=0.2, axis='y', linestyle='-', linewidth=0.5)
-    axes[0, 1].spines['top'].set_visible(False)
-    axes[0, 1].spines['right'].set_visible(False)
+    # Ground temperature (if available)
+    if 'T_ground_C' in weather.columns:
+        monthly_ground = weather.groupby(weather['timestamp'].dt.month)['T_ground_C'].mean()
+        ax.fill_between(months, monthly_ground.values, alpha=0.15, color='#7B7D7D', zorder=1)
+        ax.plot(months, monthly_ground.values, marker='s', color='#7B7D7D',
+                linewidth=2.0, markersize=5, markerfacecolor='#7B7D7D',
+                markeredgecolor='#7B7D7D', label='Ground (2m depth)', zorder=3)
 
-    # Ground vs outdoor temp comparison
-    monthly_out = weather.groupby(weather['timestamp'].dt.month)['T_out_C'].mean()
-    monthly_gnd = weather.groupby(weather['timestamp'].dt.month)['T_ground_C'].mean()
-    axes[1, 0].plot(monthly_out.index, monthly_out.values, marker='o', color='#2C3E50',
-                    linewidth=2, markersize=6, label='Outdoor')
-    axes[1, 0].plot(monthly_gnd.index, monthly_gnd.values, marker='s', color='#7F8C8D',
-                    linewidth=2, markersize=6, label='Ground (2m)')
-    axes[1, 0].set_xlabel('Month')
-    axes[1, 0].set_ylabel('Temperature (°C)')
-    axes[1, 0].set_title('Monthly Average Temperatures')
-    axes[1, 0].legend(frameon=False)
-    axes[1, 0].grid(True, alpha=0.2, linestyle='-', linewidth=0.5)
-    axes[1, 0].spines['top'].set_visible(False)
-    axes[1, 0].spines['right'].set_visible(False)
+    ax.set_xlabel('Month', fontsize=10)
+    ax.set_ylabel('Temperature (°C)', fontsize=10)
+    ax.set_title('Monthly Average Temperature', fontsize=11, pad=12)
+    ax.set_xticks(range(1, 13))
+    ax.set_xticklabels(month_names, fontsize=8, rotation=45, ha='right')
+    ax.tick_params(axis='both', labelsize=9)
 
-    # Add y-axis padding
-    monthly_min = min(monthly_out.min(), monthly_gnd.min())
-    monthly_max = max(monthly_out.max(), monthly_gnd.max())
-    monthly_range = monthly_max - monthly_min
-    axes[1, 0].set_ylim(monthly_min - monthly_range * 0.1, monthly_max + monthly_range * 0.1)
+    # Professional legend
+    ax.legend(loc='upper left', frameon=True, fontsize=9, framealpha=1.0,
+              facecolor='white', edgecolor='#666666', fancybox=False)
 
-    # Design conditions
+    # Professional grid
+    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5, color='gray', zorder=0)
+    ax.set_axisbelow(True)
+
+    # Clean spines
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
+    for spine in ['left', 'bottom']:
+        ax.spines[spine].set_color('#666666')
+        ax.spines[spine].set_linewidth(0.8)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_monthly_solar(weather):
+    """Monthly average solar radiation (direct and diffuse) - academic style"""
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+
+    if 'I_dir_Wm2' not in weather.columns or 'I_dif_Wm2' not in weather.columns:
+        ax.text(0.5, 0.5, 'Solar radiation data not available', ha='center', va='center')
+        return fig
+
+    monthly_dir = weather.groupby(weather['timestamp'].dt.month)['I_dir_Wm2'].mean()
+    monthly_dif = weather.groupby(weather['timestamp'].dt.month)['I_dif_Wm2'].mean()
+    months = monthly_dir.index
+    month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+    # Professional colors with shaded areas
+    ax.fill_between(months, monthly_dir.values, alpha=0.15, color='#D35400', zorder=1)
+    ax.plot(months, monthly_dir.values, marker='o', color='#D35400',
+            linewidth=2.0, markersize=5, markerfacecolor='#D35400',
+            markeredgecolor='#D35400', label='Direct Normal', zorder=3)
+
+    ax.fill_between(months, monthly_dif.values, alpha=0.15, color='#2874A6', zorder=1)
+    ax.plot(months, monthly_dif.values, marker='s', color='#2874A6',
+            linewidth=2.0, markersize=5, markerfacecolor='#2874A6',
+            markeredgecolor='#2874A6', label='Diffuse Horizontal', zorder=3)
+
+    ax.set_xlabel('Month', fontsize=10)
+    ax.set_ylabel('Solar Irradiance (W/m²)', fontsize=10)
+    ax.set_title('Monthly Average Solar Radiation Components', fontsize=11, pad=12)
+    ax.set_xticks(range(1, 13))
+    ax.set_xticklabels(month_names, fontsize=8, rotation=45, ha='right')
+    ax.tick_params(axis='both', labelsize=9)
+
+    # Professional legend
+    ax.legend(loc='upper left', frameon=True, fontsize=9, framealpha=1.0,
+              facecolor='white', edgecolor='#666666', fancybox=False)
+
+    # Professional grid
+    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5, color='gray', zorder=0)
+    ax.set_axisbelow(True)
+
+    # Clean spines
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
+    for spine in ['left', 'bottom']:
+        ax.spines[spine].set_color('#666666')
+        ax.spines[spine].set_linewidth(0.8)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_monthly_solar_elevation(weather):
+    """Monthly maximum solar elevation - academic style"""
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+
+    if 'theta_s_deg' not in weather.columns:
+        ax.text(0.5, 0.5, 'Solar elevation data not available', ha='center', va='center')
+        return fig
+
+    monthly_solar_elev = weather.groupby(weather['timestamp'].dt.month).apply(
+        lambda x: (90 - x['theta_s_deg']).max()
+    )
+    months = monthly_solar_elev.index
+    month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+    # Professional color: amber/golden for sun with shaded area
+    ax.fill_between(months, monthly_solar_elev.values, alpha=0.15, color='#D68910', zorder=1)
+    ax.plot(months, monthly_solar_elev.values, marker='^', color='#D68910',
+            linewidth=2.0, markersize=5, markerfacecolor='#D68910',
+            markeredgecolor='#D68910', zorder=3)
+
+    ax.set_xlabel('Month', fontsize=10)
+    ax.set_ylabel('Solar Elevation Angle (°)', fontsize=10)
+    ax.set_title('Monthly Maximum Solar Elevation', fontsize=11, pad=12)
+    ax.set_xticks(range(1, 13))
+    ax.set_xticklabels(month_names, fontsize=8, rotation=45, ha='right')
+    ax.tick_params(axis='both', labelsize=9)
+
+    # Professional grid
+    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5, color='gray', zorder=0)
+    ax.set_axisbelow(True)
+
+    # Clean spines
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
+    for spine in ['left', 'bottom']:
+        ax.spines[spine].set_color('#666666')
+        ax.spines[spine].set_linewidth(0.8)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_temp_distribution(weather, design_day_cold=None, design_day_hot=None, temp_04=None, temp_996=None):
+    """Temperature distribution with design conditions - academic style"""
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+
     temps = weather['T_out_C']
-    heat_design = np.percentile(temps, 0.4)
-    cool_design = np.percentile(temps, 99.6)
-    axes[1, 1].hist(temps, bins=40, color='#34495E', edgecolor='white', linewidth=0.5)
-    axes[1, 1].axvline(heat_design, color='#3498DB', linestyle='--', linewidth=2,
-                       label=f'Heating: {heat_design:.1f}°C')
-    axes[1, 1].axvline(cool_design, color='#E74C3C', linestyle='--', linewidth=2,
-                       label=f'Cooling: {cool_design:.1f}°C')
-    axes[1, 1].set_xlabel('Temperature (°C)')
-    axes[1, 1].set_ylabel('Frequency (hours)')
-    axes[1, 1].set_title('Design Conditions')
-    axes[1, 1].legend(frameon=False)
-    axes[1, 1].grid(True, alpha=0.2, axis='y', linestyle='-', linewidth=0.5)
-    axes[1, 1].spines['top'].set_visible(False)
-    axes[1, 1].spines['right'].set_visible(False)
+    heat_design = np.percentile(temps, 0.4) if temp_04 is None else temp_04
+    cool_design = np.percentile(temps, 99.6) if temp_996 is None else temp_996
+
+    # Professional histogram with subtle color
+    n, bins, patches = ax.hist(temps, bins=50, color='#5D6D7E',
+                               edgecolor='white', linewidth=0.5, alpha=0.65)
+
+    # Design condition lines - SWAPPED: Heating=Red, Cooling=Blue
+    ax.axvline(heat_design, color='#C0392B', linestyle='--', linewidth=2.5,
+               label=f'Heating Design: {heat_design:.1f}°C (0.4%)', zorder=5)
+    ax.axvline(cool_design, color='#2874A6', linestyle='--', linewidth=2.5,
+               label=f'Cooling Design: {cool_design:.1f}°C (99.6%)', zorder=5)
+
+    ax.set_xlabel('Temperature (°C)', fontsize=10)
+    ax.set_ylabel('Frequency (hours)', fontsize=10)
+    ax.set_title('Temperature Distribution & Design Conditions', fontsize=11, pad=12)
+    ax.tick_params(axis='both', labelsize=9)
+
+    # Professional legend
+    ax.legend(loc='upper right', frameon=True, fontsize=9, framealpha=1.0,
+              facecolor='white', edgecolor='#666666', fancybox=False)
+
+    # Professional grid
+    ax.grid(True, alpha=0.3, axis='y', linestyle='-', linewidth=0.5, color='gray', zorder=0)
+    ax.set_axisbelow(True)
+
+    # Clean spines
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
+    for spine in ['left', 'bottom']:
+        ax.spines[spine].set_color('#666666')
+        ax.spines[spine].set_linewidth(0.8)
+
+    # Add statistics text box (without "Temperature Statistics:" label) - opaque so lines don't show through
+    stats_text = f"Min: {temps.min():.1f}°C\n"
+    stats_text += f"Max: {temps.max():.1f}°C\n"
+    stats_text += f"Mean: {temps.mean():.1f}°C\n"
+    stats_text += f"Median: {temps.median():.1f}°C\n"
+
+    if design_day_cold is not None and design_day_hot is not None:
+        stats_text += f"\nDesign Days:\n"
+        stats_text += f"  Heating: {design_day_cold}\n"
+        stats_text += f"  Cooling: {design_day_hot}"
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_peak_heating_breakdown(results, planes, air, weather, T_heat):
+    """Detailed breakdown of peak heating load by building elements"""
+    from config import RHO_AIR, CP_AIR
+
+    # Find peak heating hour
+    peak_idx = results['Q_heat_W'].idxmax()
+    peak_load_kW = results.loc[peak_idx, 'Q_heat_W'] / 1000
+    T_out_peak = results.loc[peak_idx, 'T_out_C']
+
+    # Calculate heat loss for each building element type at peak hour
+    losses = {}
+
+    # Group planes by type
+    walls_ag = []  # Above-ground walls
+    roofs = []
+    windows = []
+    walls_ug = []  # Underground walls
+    floors = []
+
+    for p in planes:
+        if p.is_opaque():
+            if p.ground_contact:
+                if p.tilt_deg == 90:
+                    walls_ug.append(p)
+                else:  # floor
+                    floors.append(p)
+            else:
+                if p.tilt_deg == 90:
+                    walls_ag.append(p)
+                else:  # roof
+                    roofs.append(p)
+        elif p.is_window():
+            windows.append(p)
+
+    # Get boundary temperatures at peak hour
+    if 'T_ground_C' in weather.columns:
+        T_ground = weather.iloc[peak_idx]['T_ground_C']
+    else:
+        T_ground = T_out_peak
+
+    # Calculate losses for each category
+    losses['Walls (Above Ground)'] = sum(p.U * p.area_m2 * abs(T_out_peak - T_heat) for p in walls_ag) / 1000
+    losses['Roofs'] = sum(p.U * p.area_m2 * abs(T_out_peak - T_heat) for p in roofs) / 1000
+    losses['Windows'] = sum(p.U * p.area_m2 * abs(T_out_peak - T_heat) for p in windows) / 1000
+    losses['Basement Walls'] = sum(p.U * p.area_m2 * abs(T_ground - T_heat) for p in walls_ug) / 1000
+    losses['Floor Slab'] = sum(p.U * p.area_m2 * abs(T_ground - T_heat) for p in floors) / 1000
+
+    # Ventilation and infiltration
+    V_inf_m3s = air.ACH_infiltration_h * air.V_zone_m3 / 3600.0
+    losses['Ventilation (HRV)'] = abs(RHO_AIR * CP_AIR * air.Vdot_vent_m3s * (1.0 - air.eta_HRV) * (T_out_peak - T_heat)) / 1000
+    losses['Infiltration'] = abs(RHO_AIR * CP_AIR * V_inf_m3s * (T_out_peak - T_heat)) / 1000
+
+    # Create pie chart
+    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+
+    # Filter out zero values and prepare data
+    filtered_losses = {k: v for k, v in losses.items() if v > 0.1}
+
+    # Professional academic color palette with high contrast and distinction
+    color_map = {
+        'Walls (Above Ground)': '#8B0000',  # Dark red - largest envelope component
+        'Roofs': '#D35400',                  # Dark orange - distinct from walls
+        'Windows': '#2874A6',                # Professional blue - glazing
+        'Basement Walls': '#566573',         # Medium gray - underground
+        'Floor Slab': '#34495E',             # Dark blue-gray - foundation
+        'Ventilation (HRV)': '#16A085',      # Teal - mechanical ventilation
+        'Infiltration': '#AF7AC5'            # Light purple - air leakage (distinct from ventilation)
+    }
+
+    # Sort by size
+    sorted_items = sorted(filtered_losses.items(), key=lambda x: x[1], reverse=True)
+
+    labels = [item[0] for item in sorted_items]
+    values = [item[1] for item in sorted_items]
+    percentages = [v/peak_load_kW * 100 for v in values]
+
+    # Get colors in sorted order
+    colors = [color_map[label] for label in labels]
+
+    # Create pie
+    wedges, texts, autotexts = ax.pie(values, labels=None, colors=colors[:len(values)],
+                                       autopct='%1.1f%%', startangle=90,
+                                       wedgeprops={'edgecolor': 'white', 'linewidth': 2})
+
+    for autotext in autotexts:
+        autotext.set_color('white')
+        autotext.set_fontsize(11)
+        autotext.set_weight('bold')
+
+    # Create detailed legend with kW values
+    legend_labels = [f'{label}: {value:.1f} kW ({pct:.1f}%)'
+                     for label, value, pct in zip(labels, values, percentages)]
+
+    ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1, 0, 0.5, 1),
+              fontsize=10, frameon=True, facecolor='white', edgecolor='#666666')
+
+    # Title with peak info
+    timestamp = results.loc[peak_idx, 'timestamp']
+    title = f'Peak Heating Load Breakdown\n'
+    title += f'Total: {peak_load_kW:.1f} kW at {timestamp}\n'
+    title += f'Outdoor Temperature: {T_out_peak:.1f}°C'
+    ax.set_title(title, fontsize=13, fontweight='bold', pad=20)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_temp_overview(weather, design_day_cold=None, design_day_hot=None, temp_04=None, temp_996=None):
+    """
+    Create a 2-panel overview of weather data:
+    - Top: Monthly averages (3 separate clean subplots)
+    - Bottom: Temperature distribution with design conditions
+    """
+    # Create figure with custom layout: 3 subplots on top row, 1 on bottom (50% height)
+    fig = plt.figure(figsize=(16, 10))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1, 0.7], hspace=0.35, wspace=0.25)
+
+    # Top row: 3 subplots for monthly data
+    ax_temp = fig.add_subplot(gs[0, 0])
+    ax_ir = fig.add_subplot(gs[0, 1])
+    ax_solar = fig.add_subplot(gs[0, 2])
+
+    # Bottom row: 1 subplot spanning all columns
+    ax_dist = fig.add_subplot(gs[1, :])
+
+    # === TOP ROW: 3 SEPARATE MONTHLY OVERVIEW PLOTS ===
+
+    # Monthly aggregations
+    monthly_temp = weather.groupby(weather['timestamp'].dt.month)['T_out_C'].mean()
+    monthly_ir = weather.groupby(weather['timestamp'].dt.month)['I_LW_Wm2'].mean() if 'I_LW_Wm2' in weather.columns else None
+    monthly_solar_elev = weather.groupby(weather['timestamp'].dt.month).apply(
+        lambda x: (90 - x['theta_s_deg']).max() if 'theta_s_deg' in x.columns else 0
+    )
+
+    months = monthly_temp.index
+    month_names = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
+
+    # 1. TEMPERATURE
+    ax_temp.plot(months, monthly_temp.values, marker='o', color='#2C3E50',
+                 linewidth=2.5, markersize=7, markeredgecolor='white', markeredgewidth=1.5, zorder=3)
+    ax_temp.fill_between(months, monthly_temp.values, alpha=0.2, color='#2C3E50', zorder=1)
+    ax_temp.set_ylabel('Temperature (°C)', fontsize=10, fontweight='bold')
+    ax_temp.set_title('Monthly Avg Temperature', fontsize=11, fontweight='bold', pad=10)
+    ax_temp.set_xticks(range(1, 13))
+    ax_temp.set_xticklabels(month_names, fontsize=9)
+    ax_temp.grid(True, alpha=0.25, linestyle='--', linewidth=0.5, zorder=0)
+    ax_temp.spines['top'].set_visible(False)
+    ax_temp.spines['right'].set_visible(False)
+    # Add value labels on peaks
+    ax_temp.text(monthly_temp.idxmax(), monthly_temp.max(), f'{monthly_temp.max():.1f}°C',
+                ha='center', va='bottom', fontsize=8, fontweight='bold', color='#2C3E50')
+    ax_temp.text(monthly_temp.idxmin(), monthly_temp.min(), f'{monthly_temp.min():.1f}°C',
+                ha='center', va='top', fontsize=8, fontweight='bold', color='#2C3E50')
+
+    # 2. INFRARED RADIATION
+    if monthly_ir is not None:
+        ax_ir.plot(months, monthly_ir.values, marker='s', color='#E67E22',
+                   linewidth=2.5, markersize=7, markeredgecolor='white', markeredgewidth=1.5, zorder=3)
+        ax_ir.fill_between(months, monthly_ir.values, alpha=0.2, color='#E67E22', zorder=1)
+        ax_ir.set_ylabel('IR Radiation (W/m²)', fontsize=10, fontweight='bold')
+        ax_ir.set_title('Monthly Avg IR Radiation', fontsize=11, fontweight='bold', pad=10)
+        ax_ir.set_xticks(range(1, 13))
+        ax_ir.set_xticklabels(month_names, fontsize=9)
+        ax_ir.grid(True, alpha=0.25, linestyle='--', linewidth=0.5, zorder=0)
+        ax_ir.spines['top'].set_visible(False)
+        ax_ir.spines['right'].set_visible(False)
+        # Add value labels on peaks
+        ax_ir.text(monthly_ir.idxmax(), monthly_ir.max(), f'{monthly_ir.max():.0f}',
+                  ha='center', va='bottom', fontsize=8, fontweight='bold', color='#E67E22')
+        ax_ir.text(monthly_ir.idxmin(), monthly_ir.min(), f'{monthly_ir.min():.0f}',
+                  ha='center', va='top', fontsize=8, fontweight='bold', color='#E67E22')
+
+    # 3. SOLAR ELEVATION
+    ax_solar.plot(months, monthly_solar_elev.values, marker='^', color='#F39C12',
+                  linewidth=2.5, markersize=7, markeredgecolor='white', markeredgewidth=1.5, zorder=3)
+    ax_solar.fill_between(months, monthly_solar_elev.values, alpha=0.2, color='#F39C12', zorder=1)
+    ax_solar.set_ylabel('Solar Elevation (°)', fontsize=10, fontweight='bold')
+    ax_solar.set_title('Monthly Max Solar Elevation', fontsize=11, fontweight='bold', pad=10)
+    ax_solar.set_xticks(range(1, 13))
+    ax_solar.set_xticklabels(month_names, fontsize=9)
+    ax_solar.grid(True, alpha=0.25, linestyle='--', linewidth=0.5, zorder=0)
+    ax_solar.spines['top'].set_visible(False)
+    ax_solar.spines['right'].set_visible(False)
+    # Add value labels on peaks
+    ax_solar.text(monthly_solar_elev.idxmax(), monthly_solar_elev.max(), f'{monthly_solar_elev.max():.1f}°',
+                 ha='center', va='bottom', fontsize=8, fontweight='bold', color='#F39C12')
+    ax_solar.text(monthly_solar_elev.idxmin(), monthly_solar_elev.min(), f'{monthly_solar_elev.min():.1f}°',
+                 ha='center', va='top', fontsize=8, fontweight='bold', color='#F39C12')
+
+    # === BOTTOM: TEMPERATURE DISTRIBUTION WITH DESIGN CONDITIONS ===
+
+    temps = weather['T_out_C']
+    heat_design = np.percentile(temps, 0.4) if temp_04 is None else temp_04
+    cool_design = np.percentile(temps, 99.6) if temp_996 is None else temp_996
+
+    # Histogram
+    n, bins, patches = ax_dist.hist(temps, bins=50, color='#34495E',
+                                     edgecolor='white', linewidth=0.8, alpha=0.7)
+
+    # Design condition lines
+    ax_dist.axvline(heat_design, color='#3498DB', linestyle='--', linewidth=3,
+                    label=f'Heating Design: {heat_design:.1f}°C (0.4%)', zorder=5)
+    ax_dist.axvline(cool_design, color='#E74C3C', linestyle='--', linewidth=3,
+                    label=f'Cooling Design: {cool_design:.1f}°C (99.6%)', zorder=5)
+
+    ax_dist.set_xlabel('Temperature (°C)', fontsize=11, fontweight='bold')
+    ax_dist.set_ylabel('Frequency (hours)', fontsize=11, fontweight='bold')
+    ax_dist.set_title('Temperature Distribution & Design Conditions', fontsize=13, fontweight='bold', pad=15)
+    ax_dist.legend(loc='upper right', frameon=True, fontsize=10)
+    ax_dist.grid(True, alpha=0.3, axis='y', linestyle='-', linewidth=0.5)
+    ax_dist.spines['top'].set_visible(False)
+    ax_dist.spines['right'].set_visible(False)
+
+    # Add statistics text box
+    stats_text = f"Temperature Statistics:\n"
+    stats_text += f"  Min: {temps.min():.1f}°C\n"
+    stats_text += f"  Max: {temps.max():.1f}°C\n"
+    stats_text += f"  Mean: {temps.mean():.1f}°C\n"
+    stats_text += f"  Median: {temps.median():.1f}°C\n"
+
+    if design_day_cold is not None and design_day_hot is not None:
+        stats_text += f"\nDesign Days:\n"
+        stats_text += f"  Heating: {design_day_cold}\n"
+        stats_text += f"  Cooling: {design_day_hot}"
+
+    ax_dist.text(0.02, 0.98, stats_text, transform=ax_dist.transAxes,
+                 fontsize=9, verticalalignment='top',
+                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
 
     plt.tight_layout()
     return fig

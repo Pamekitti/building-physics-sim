@@ -9,7 +9,7 @@ from config import *
 from building import Plane, AirSide, InternalGains
 from physics import run_hourly
 from weather import load_epw_weather
-from visualize import plot_temp_overview, plot_solar_radiation, plot_sun_path, plot_temp_heatmap, plot_hourly_stacked_bar, plot_heat_distribution, plot_hourly_stacked_bar_cooling, plot_heat_distribution_4pies, plot_heat_distribution_detailed
+from visualize import plot_monthly_temperature, plot_monthly_solar, plot_monthly_solar_elevation, plot_temp_distribution, plot_solar_radiation, plot_sun_path, plot_temp_heatmap, plot_hourly_stacked_bar, plot_heat_distribution, plot_hourly_stacked_bar_cooling, plot_heat_distribution_4pies, plot_heat_distribution_detailed, plot_peak_heating_breakdown
 import matplotlib.pyplot as plt
 
 def main():
@@ -54,14 +54,27 @@ def main():
     os.makedirs('plots', exist_ok=True)
     print("Generating weather plots...")
 
-    fig1 = plot_temp_overview(weather)
-    fig1.savefig('plots/temperature.png', dpi=150, bbox_inches='tight')
-    fig2 = plot_solar_radiation(weather)
-    fig2.savefig('plots/solar.png', dpi=150, bbox_inches='tight')
-    fig3 = plot_sun_path(weather)
-    fig3.savefig('plots/solar_elevation.png', dpi=150, bbox_inches='tight')
-    fig4 = plot_temp_heatmap(weather)
-    fig4.savefig('plots/temp_heatmap.png', dpi=150, bbox_inches='tight')
+    # Generate 4 separate temperature-related plots
+    fig1 = plot_monthly_temperature(weather)
+    fig1.savefig('plots/monthly_temperature.png', dpi=150, bbox_inches='tight')
+
+    fig2 = plot_monthly_solar(weather)
+    fig2.savefig('plots/monthly_solar.png', dpi=150, bbox_inches='tight')
+
+    fig3 = plot_monthly_solar_elevation(weather)
+    fig3.savefig('plots/monthly_solar_elevation.png', dpi=150, bbox_inches='tight')
+
+    fig4 = plot_temp_distribution(weather, design_day_cold, design_day_hot, temp_04_percentile, temp_996_percentile)
+    fig4.savefig('plots/temp_distribution.png', dpi=150, bbox_inches='tight')
+
+    # Other weather plots
+    fig5 = plot_solar_radiation(weather)
+    fig5.savefig('plots/solar.png', dpi=150, bbox_inches='tight')
+    fig6 = plot_sun_path(weather)
+    fig6.savefig('plots/solar_elevation.png', dpi=150, bbox_inches='tight')
+    fig7 = plot_temp_heatmap(weather)
+    fig7.savefig('plots/temp_heatmap.png', dpi=150, bbox_inches='tight')
+
     plt.close('all')
     print("Saved weather plots")
     print("")
@@ -172,6 +185,10 @@ def main():
 
     fig_detailed_hot = plot_heat_distribution_detailed(results_hot, air, gains_cooling, T_HEAT, T_COOL)
     fig_detailed_hot.savefig('plots/heat_distribution_hottest_detailed.png', dpi=150, bbox_inches='tight')
+
+    # Generate peak heating load breakdown by building elements
+    fig_peak = plot_peak_heating_breakdown(results_cold, planes, air, design_weather_cold, T_HEAT)
+    fig_peak.savefig('plots/peak_heating_breakdown.png', dpi=150, bbox_inches='tight')
 
     plt.close('all')
     print("Saved design day analysis")
