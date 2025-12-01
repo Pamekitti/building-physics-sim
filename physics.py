@@ -20,15 +20,12 @@ def plane_irradiance(I_dir, I_dif, cos_i, tilt):
 
 
 def sol_air_temp(T_out, I_p, alpha, epsilon, I_LW, h_e):
-    # Sol-air temperature calculation (simplified ASHRAE approach)
-    # Ignores longwave radiation effects for simplicity (standard practice)
-    # T_sol = T_out + (alpha * I_solar) / h_e
-    # This ensures T_sol >= T_out always
+    # Sol-air temperature calculation (simplified)
+    # Ignores longwave radiation effects for simplicity
     return T_out + (alpha * I_p) / h_e
 
 
 def run_hourly(weather, planes, air, T_heat, T_cool, gains=None):
-    # Calculate hourly loads
     req_cols = ['timestamp','T_out_C','I_dir_Wm2','I_dif_Wm2','theta_s_deg','phi_s_deg']
     for col in req_cols:
         if col not in weather.columns:
@@ -58,10 +55,10 @@ def run_hourly(weather, planes, air, T_heat, T_cool, gains=None):
                 if p.alpha is None or p.epsilon is None:
                     raise ValueError(f"{p.name} needs alpha/epsilon")
 
-                # Heating: use T_out (conservative - ignore solar gains)
+                # Heating: use T_out (ignore solar gains)
                 T_boundary_h = w['T_out_C'].values
 
-                # Cooling: use T_sol only if T_sol > T_out (conservative - ignore radiative cooling)
+                # Cooling: use T_sol only if T_sol > T_out (ignore radiative cooling)
                 T_sol = sol_air_temp(w['T_out_C'].values, I_p, p.alpha, p.epsilon, I_LW, H_E)
                 T_boundary_c = np.maximum(T_sol, w['T_out_C'].values)
 
@@ -91,32 +88,22 @@ def run_hourly(weather, planes, air, T_heat, T_cool, gains=None):
     if gains:
         Q_int = gains.total_kw() * 1000.0 * np.ones(n)
 
-    # Sign convention: heat INTO building = positive, heat OUT = negative
-    # Q_trans_h and Q_air_h are naturally negative when T_out < T_in (heat out)
-    # All gains are positive (heat entering)
-
-    # Heating load needed (positive value)
-    # Conservative design: exclude solar/internal gains (worst-case = no free heat)
     Q_heat = np.maximum(0.0, -Q_trans_h - Q_air_h)
-
-    # Cooling load needed (positive value)
-    # Realistic design: include all heat gains
     Q_cool = np.maximum(0.0, Q_trans_c + Q_air_c + Q_solar + Q_int)
 
     df = pd.DataFrame({
         'timestamp': w['timestamp'],
         'T_out_C': w['T_out_C'],
-        'Q_trans_h_W': Q_trans_h,     # negative (heat out)
-        'Q_air_h_W': Q_air_h,         # negative (heat out)
-        'Q_heat_W': Q_heat,           # positive (energy added)
-        'Q_trans_c_W': Q_trans_c,     # positive (heat in)
-        'Q_air_c_W': Q_air_c,         # positive (heat in)
-        'Q_solar_W': Q_solar,         # positive (heat in)
-        'Q_int_W': Q_int,             # positive (heat in)
-        'Q_cool_W': Q_cool,           # positive (energy removed)
+        'Q_trans_h_W': Q_trans_h,     
+        'Q_air_h_W': Q_air_h,         
+        'Q_heat_W': Q_heat,           
+        'Q_trans_c_W': Q_trans_c,     
+        'Q_air_c_W': Q_air_c,         
+        'Q_solar_W': Q_solar,         
+        'Q_int_W': Q_int,             
+        'Q_cool_W': Q_cool,           
     })
 
-    # Add solar and IR data if available
     if 'theta_s_deg' in w.columns:
         df['theta_s_deg'] = w['theta_s_deg']
     if 'I_LW_Wm2' in w.columns:
