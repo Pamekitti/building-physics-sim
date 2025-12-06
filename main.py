@@ -1,200 +1,104 @@
 #!/usr/bin/env python3
+"""BESTEST Case 600 - Parametric heating load analysis"""
 
-import pandas as pd
-import numpy as np
-import warnings
-warnings.filterwarnings('ignore')
 import os
+import numpy as np
+import pandas as pd
+
 from config import *
-from building import Plane, AirSide, InternalGains
-from physics import run_hourly
-from weather import load_epw_weather
-from visualize import plot_monthly_temperature, plot_monthly_solar, plot_monthly_solar_elevation, plot_temp_distribution, plot_solar_radiation, plot_sun_path, plot_temp_heatmap, plot_hourly_stacked_bar, plot_heat_distribution, plot_hourly_stacked_bar_cooling, plot_heat_distribution_4pies, plot_heat_distribution_detailed, plot_peak_heating_breakdown
-import matplotlib.pyplot as plt
+from src.building import Plane, AirSide, InternalGains
+from src.physics import run_hourly
+from src.weather import load_epw_weather
+from src.results import (print_table_4, print_table_5, plot_fig2_monthly,
+                         plot_fig2_2_breakdown, plot_fig3_pies, plot_fig4_stacked,
+                         plot_fig4_2_gains, plot_fig5_winter, plot_fig6_shoulder)
 
-def main():
-    weather = load_epw_weather('weather_files/SWE_ST_Stockholm.Arlanda.AP.024600_TMYx.2004-2018/SWE_ST_Stockholm.Arlanda.AP.024600_TMYx.2004-2018.epw')
 
-    weather['timestamp'] = pd.to_datetime({
-        'year': 2018,
-        'month': weather['timestamp'].dt.month,
-        'day': weather['timestamp'].dt.day,
-        'hour': weather['timestamp'].dt.hour
-    })
-    weather = weather.sort_values('timestamp').reset_index(drop=True)
+def make_setpoint_array(timestamps, constant=True):
+    hrs = pd.Series(timestamps).dt.hour
+    if constant:
+        return np.full(len(hrs), 21.0)
+    return np.where((hrs >= 7) & (hrs < 23), 21.0, 18.0)
 
-    print("Weather Data Summary:")
-    print(f"  Temperature range: {weather['T_out_C'].min():.1f} to {weather['T_out_C'].max():.1f}°C")
-    print(f"  Ground temp range: {weather['T_ground_C'].min():.1f} to {weather['T_ground_C'].max():.1f}°C")
-    print(f"  Max solar (direct): {weather['I_dir_Wm2'].max():.0f} W/m²")
-    print(f"  Max solar (diffuse): {weather['I_dif_Wm2'].max():.0f} W/m²")
-    print("")
 
-    # find coldest day using 0.4th percentile (design heating condition)
-    weather['Date'] = weather['timestamp'].dt.date
-    daily_min = weather.groupby('Date')['T_out_C'].min().reset_index()
-    temp_04_percentile = daily_min['T_out_C'].quantile(0.004)  # 0.4th percentile
-    # Find the day closest to this percentile
-    design_day_cold = daily_min.iloc[(daily_min['T_out_C'] - temp_04_percentile).abs().idxmin()]['Date']
-    design_weather_cold = weather[weather['Date'] == design_day_cold].copy()
+def make_vent_array(timestamps, constant=True):
+    hrs = pd.Series(timestamps).dt.hour
+    if constant:
+        return np.full(len(hrs), 0.5)
+    return np.where((hrs >= 7) & (hrs < 23), 0.7, 0.3)
 
-    # find hottest day using 99.6th percentile (design cooling condition)
-    daily_max = weather.groupby('Date')['T_out_C'].max().reset_index()
-    temp_996_percentile = daily_max['T_out_C'].quantile(0.996)  # 99.6th percentile
-    # Find the day closest to this percentile
-    design_day_hot = daily_max.iloc[(daily_max['T_out_C'] - temp_996_percentile).abs().idxmin()]['Date']
-    design_weather_hot = weather[weather['Date'] == design_day_hot].copy()
 
-    # Cold day stats
-    tmin = design_weather_cold['T_out_C'].min()
-    tmax = design_weather_cold['T_out_C'].max()
-    tavg = design_weather_cold['T_out_C'].mean()
-    solar_max = design_weather_cold['I_dir_Wm2'].max()
+def run_scenarios(weather, planes, air, gains):
+    scenarios = {
+        'S1': (True, True),
+        'S2': (False, True),
+        'S3': (True, False),
+        'S4': (False, False),
+    }
 
-    os.makedirs('plots', exist_ok=True)
-    print("Generating weather plots...")
+    results = {}
+    for name, (sp_const, vent_const) in scenarios.items():
+        T_int = make_setpoint_array(weather['timestamp'], sp_const)
+        vent = make_vent_array(weather['timestamp'], vent_const)
+        res = run_hourly(weather, planes, air, T_int, vent_ACH=vent, gains=gains)
+        results[name] = res
 
-    # Generate 4 separate temperature-related plots
-    fig1 = plot_monthly_temperature(weather)
-    fig1.savefig('plots/monthly_temperature.png', dpi=150, bbox_inches='tight')
+        kwh = res['Q_heat_W'].sum() / 1000
+        print(f"  {name}: {kwh:.0f} kWh ({kwh/FLOOR_AREA:.1f} kWh/m²)")
 
-    fig2 = plot_monthly_solar(weather)
-    fig2.savefig('plots/monthly_solar.png', dpi=150, bbox_inches='tight')
-
-    fig3 = plot_monthly_solar_elevation(weather)
-    fig3.savefig('plots/monthly_solar_elevation.png', dpi=150, bbox_inches='tight')
-
-    fig4 = plot_temp_distribution(weather, design_day_cold, design_day_hot, temp_04_percentile, temp_996_percentile)
-    fig4.savefig('plots/temp_distribution.png', dpi=150, bbox_inches='tight')
-
-    # Other weather plots
-    fig5 = plot_solar_radiation(weather)
-    fig5.savefig('plots/solar.png', dpi=150, bbox_inches='tight')
-    fig6 = plot_sun_path(weather)
-    fig6.savefig('plots/solar_elevation.png', dpi=150, bbox_inches='tight')
-    fig7 = plot_temp_heatmap(weather)
-    fig7.savefig('plots/temp_heatmap.png', dpi=150, bbox_inches='tight')
-
-    plt.close('all')
-    print("Saved weather plots")
-    print("")
-
-    planes = [
-        Plane('WW-N', 'opaque', area_m2=372.8, tilt_deg=90, azimuth_deg=7, U=AG_WALL_U, alpha=WALL_ALPHA, epsilon=EPSILON),
-        Plane('WW-S', 'opaque', area_m2=357.4, tilt_deg=90, azimuth_deg=187, U=AG_WALL_U, alpha=WALL_ALPHA, epsilon=EPSILON),
-        Plane('WW-W', 'opaque', area_m2=139.9, tilt_deg=90, azimuth_deg=277, U=AG_WALL_U, alpha=WALL_ALPHA, epsilon=EPSILON),
-        Plane('C-NE', 'opaque', area_m2=80.6, tilt_deg=90, azimuth_deg=116, U=AG_WALL_U, alpha=WALL_ALPHA, epsilon=EPSILON),
-        Plane('C-SW', 'opaque', area_m2=80.6, tilt_deg=90, azimuth_deg=296, U=AG_WALL_U, alpha=WALL_ALPHA, epsilon=EPSILON),
-        Plane('C-NW', 'opaque', area_m2=128.7, tilt_deg=90, azimuth_deg=206, U=AG_WALL_U, alpha=WALL_ALPHA, epsilon=EPSILON),
-        Plane('SW-E', 'opaque', area_m2=372.8, tilt_deg=90, azimuth_deg=77, U=AG_WALL_U, alpha=WALL_ALPHA, epsilon=EPSILON),
-        Plane('SW-W', 'opaque', area_m2=357.4, tilt_deg=90, azimuth_deg=257, U=AG_WALL_U, alpha=WALL_ALPHA, epsilon=EPSILON),
-        Plane('SW-S', 'opaque', area_m2=139.9, tilt_deg=90, azimuth_deg=167, U=AG_WALL_U, alpha=WALL_ALPHA, epsilon=EPSILON),
-        Plane('WW-RN', 'opaque', area_m2=288.0, tilt_deg=25, azimuth_deg=7, U=AG_ROOF_U, alpha=ROOF_ALPHA, epsilon=EPSILON),
-        Plane('WW-RS', 'opaque', area_m2=283.8, tilt_deg=25, azimuth_deg=187, U=AG_ROOF_U, alpha=ROOF_ALPHA, epsilon=EPSILON),
-        Plane('C-RNE', 'opaque', area_m2=69.4, tilt_deg=25, azimuth_deg=116, U=AG_ROOF_U, alpha=ROOF_ALPHA, epsilon=EPSILON),
-        Plane('C-RSW', 'opaque', area_m2=69.4, tilt_deg=25, azimuth_deg=296, U=AG_ROOF_U, alpha=ROOF_ALPHA, epsilon=EPSILON),
-        Plane('SW-RE', 'opaque', area_m2=288.0, tilt_deg=25, azimuth_deg=77, U=AG_ROOF_U, alpha=ROOF_ALPHA, epsilon=EPSILON),
-        Plane('SW-RW', 'opaque', area_m2=283.8, tilt_deg=25, azimuth_deg=257, U=AG_ROOF_U, alpha=ROOF_ALPHA, epsilon=EPSILON),
-        Plane('WW-N-Win', 'window', area_m2=141.2, tilt_deg=90, azimuth_deg=7, U=WINDOW_U, g=WINDOW_G, F_sh=WINDOW_F_SH),
-        Plane('WW-S-Win', 'window', area_m2=141.2, tilt_deg=90, azimuth_deg=187, U=WINDOW_U, g=WINDOW_G, F_sh=WINDOW_F_SH),
-        Plane('WW-W-Win', 'window', area_m2=13.6, tilt_deg=90, azimuth_deg=277, U=WINDOW_U, g=WINDOW_G, F_sh=WINDOW_F_SH),
-        Plane('C-NE-Win', 'window', area_m2=24.8, tilt_deg=90, azimuth_deg=116, U=WINDOW_U, g=WINDOW_G, F_sh=WINDOW_F_SH),
-        Plane('C-SW-Win', 'window', area_m2=24.8, tilt_deg=90, azimuth_deg=296, U=WINDOW_U, g=WINDOW_G, F_sh=WINDOW_F_SH),
-        Plane('C-NW-Win', 'window', area_m2=24.8, tilt_deg=90, azimuth_deg=206, U=WINDOW_U, g=WINDOW_G, F_sh=WINDOW_F_SH),
-        Plane('SW-E-Win', 'window', area_m2=141.2, tilt_deg=90, azimuth_deg=77, U=WINDOW_U, g=WINDOW_G, F_sh=WINDOW_F_SH),
-        Plane('SW-W-Win', 'window', area_m2=141.2, tilt_deg=90, azimuth_deg=257, U=WINDOW_U, g=WINDOW_G, F_sh=WINDOW_F_SH),
-        Plane('SW-S-Win', 'window', area_m2=13.6, tilt_deg=90, azimuth_deg=167, U=WINDOW_U, g=WINDOW_G, F_sh=WINDOW_F_SH),
-        Plane('UG-Wall', 'opaque', area_m2=PERIMETER * UG_WALL_HEIGHT, tilt_deg=90, azimuth_deg=0,
-              U=UG_WALL_U, alpha=0.0, epsilon=EPSILON, ground_contact=True),
-        Plane('Floor', 'opaque', area_m2=FLOOR_AREA, tilt_deg=0, azimuth_deg=0,
-              U=UG_FLOOR_U, alpha=0.0, epsilon=EPSILON, ground_contact=True),
-    ]
-
-    air = AirSide(V_zone_m3=BUILDING_VOLUME, Vdot_vent_m3s=VENT_FLOW,
-                  eta_HRV=HRV_EFF, ACH_infiltration_h=INFILTRATION_ACH)
-
-    # Internal gains for cooling (realistic occupancy)
-    gains_cooling = InternalGains(Q_equip_kW=EQUIP_GAIN, Q_occ_kW=OCC_GAIN, Q_light_kW=LIGHT_GAIN)
-
-    # Run simulation for coldest day
-    # Heating: conservative (no internal gains), Cooling: realistic (with internal gains)
-    results_cold = run_hourly(design_weather_cold, planes, air, T_HEAT, T_COOL, gains_cooling)
-    peak_heat = results_cold['Q_heat_W'].max() / 1000
-
-    # Run simulation for hottest day
-    # Heating: conservative (no internal gains), Cooling: realistic (with internal gains)
-    results_hot = run_hourly(design_weather_hot, planes, air, T_HEAT, T_COOL, gains_cooling)
-    peak_cool = results_hot['Q_cool_W'].max() / 1000
-
-    total_UA = sum(p.U * p.area_m2 for p in planes)
-    wall_area = sum(p.area_m2 for p in planes if p.is_opaque() and p.tilt_deg == 90 and not p.ground_contact)
-    roof_area = sum(p.area_m2 for p in planes if p.is_opaque() and p.tilt_deg == 25)
-    window_area = sum(p.area_m2 for p in planes if p.is_window())
-    floor_area = sum(p.area_m2 for p in planes if p.is_opaque() and p.tilt_deg == 0)
-
-    print(f"Building Envelope:")
-    print(f"  Wall area: {wall_area:.1f} m²")
-    print(f"  Roof area: {roof_area:.1f} m²")
-    print(f"  Window area: {window_area:.1f} m²")
-    print(f"  Floor area: {floor_area:.1f} m²")
-    print(f"  Total UA: {total_UA:.1f} W/K")
-    print(f"")
-
-    # Coldest day info (0.4th percentile design condition)
-    print(f"Design Heating Day - 0.4% Percentile ({design_day_cold}):")
-    print(f"  Design temperature: {temp_04_percentile:.1f}°C (0.4th percentile)")
-    print(f"  Temperature: Min {tmin:.1f}°C, Max {tmax:.1f}°C, Avg {tavg:.1f}°C")
-    print(f"  Max Solar: {solar_max:.0f} W/m²")
-    print(f"  Peak Heating Load: {peak_heat:.1f} kW")
-    print(f"")
-
-    # Hottest day info (99.6th percentile design condition)
-    hot_tmin = design_weather_hot['T_out_C'].min()
-    hot_tmax = design_weather_hot['T_out_C'].max()
-    hot_tavg = design_weather_hot['T_out_C'].mean()
-    hot_solar_max = design_weather_hot['I_dir_Wm2'].max()
-    print(f"Design Cooling Day - 99.6% Percentile ({design_day_hot}):")
-    print(f"  Design temperature: {temp_996_percentile:.1f}°C (99.6th percentile)")
-    print(f"  Temperature: Min {hot_tmin:.1f}°C, Max {hot_tmax:.1f}°C, Avg {hot_tavg:.1f}°C")
-    print(f"  Max Solar: {hot_solar_max:.0f} W/m²")
-    print(f"  Peak Cooling Load: {peak_cool:.1f} kW")
-    print(f"")
-
-    # generate design day plots
-    print("Generating design day analysis...")
-    # Calculate yearly max solar elevation
-    yearly_solar_elev_max = (90 - weather['theta_s_deg']).max()
-
-    # Coldest day (can have both heating and cooling)
-    fig_bar_cold = plot_hourly_stacked_bar(results_cold, solar_elev_max_year=yearly_solar_elev_max,
-                                           weather=design_weather_cold, planes=planes)
-    fig_bar_cold.savefig('plots/hourly_stacked_bar_coldest.png', dpi=150, bbox_inches='tight')
-    fig_pie_cold = plot_heat_distribution_4pies(results_cold)
-    fig_pie_cold.savefig('plots/heat_distribution_coldest.png', dpi=150, bbox_inches='tight')
-
-    # Hottest day (can have both heating and cooling)
-    fig_bar_hot = plot_hourly_stacked_bar_cooling(results_hot, solar_elev_max_year=yearly_solar_elev_max,
-                                                   weather=design_weather_hot, planes=planes)
-    fig_bar_hot.savefig('plots/hourly_stacked_bar_hottest.png', dpi=150, bbox_inches='tight')
-    fig_pie_hot = plot_heat_distribution_4pies(results_hot)
-    fig_pie_hot.savefig('plots/heat_distribution_hottest.png', dpi=150, bbox_inches='tight')
-
-    # Generate detailed breakdown pie charts
-    fig_detailed_cold = plot_heat_distribution_detailed(results_cold, air, gains_cooling, T_HEAT, T_COOL)
-    fig_detailed_cold.savefig('plots/heat_distribution_coldest_detailed.png', dpi=150, bbox_inches='tight')
-
-    fig_detailed_hot = plot_heat_distribution_detailed(results_hot, air, gains_cooling, T_HEAT, T_COOL)
-    fig_detailed_hot.savefig('plots/heat_distribution_hottest_detailed.png', dpi=150, bbox_inches='tight')
-
-    # Generate peak heating load breakdown by building elements
-    fig_peak = plot_peak_heating_breakdown(results_cold, planes, air, design_weather_cold, T_HEAT)
-    fig_peak.savefig('plots/peak_heating_breakdown.png', dpi=150, bbox_inches='tight')
-
-    plt.close('all')
-    print("Saved design day analysis")
-
-    return results_cold, results_hot
+    return results
 
 
 if __name__ == '__main__':
-    results = main()
+    os.makedirs('outputs', exist_ok=True)
+
+    print("Loading weather...")
+    weather = load_epw_weather(
+        'weather_files/GBR_SCT_Glasgow.AP.031400_TMYx/GBR_SCT_Glasgow.AP.031400_TMYx.epw',
+        'weather_files/solarposition_data_Glasgow.csv'
+    )
+    weather['timestamp'] = pd.to_datetime({
+        'year': 2021, 'month': weather['timestamp'].dt.month,
+        'day': weather['timestamp'].dt.day, 'hour': weather['timestamp'].dt.hour
+    })
+    weather = weather.sort_values('timestamp').reset_index(drop=True)
+
+    # setup building
+    planes = [
+        Plane('Roof', 'opaque', 48.0, 0, 0, ROOF_U, ALPHA, EPSILON),
+        Plane('Wall-N', 'opaque', 20.0, 90, 0, WALL_U, ALPHA, EPSILON),
+        Plane('Wall-S', 'opaque', 8.0, 90, 180, WALL_U, ALPHA, EPSILON),
+        Plane('Wall-E', 'opaque', 15.0, 90, 90, WALL_U, ALPHA, EPSILON),
+        Plane('Wall-W', 'opaque', 15.0, 90, 270, WALL_U, ALPHA, EPSILON),
+        Plane('Window-S', 'window', 12.0, 90, 180, WINDOW_U, g=SHGC),
+    ]
+    air = AirSide(BUILDING_VOLUME, VENT_FLOW, HRV_EFF, INFILTRATION_ACH)
+    gains = InternalGains(INTERNAL_GAIN_W / 1000)
+
+    print("\nRunning scenarios...")
+    results = run_scenarios(weather, planes, air, gains)
+
+    ts = results['S1']['timestamp']
+    winter = (ts >= '2021-01-08') & (ts < '2021-01-15')
+    shoulder = (ts >= '2021-10-07') & (ts < '2021-10-14')
+
+    print_table_4(results)
+    print_table_5(results, FLOOR_AREA)
+
+    print("\nGenerating figures...")
+    plot_fig2_monthly(results, weather, 'outputs/fig2_monthly.png')
+    print("  fig2_monthly.png")
+    plot_fig2_2_breakdown(results, weather, 'outputs/fig2_2_breakdown.png')
+    print("  fig2_2_breakdown.png")
+    plot_fig3_pies(results, 'outputs/fig3_breakdown.png')
+    print("  fig3_breakdown.png")
+    plot_fig4_stacked(results, 'outputs/fig4_comparison.png')
+    print("  fig4_comparison.png")
+    plot_fig4_2_gains(results, 'outputs/fig4_2_gains.png')
+    print("  fig4_2_gains.png")
+    plot_fig5_winter(results, winter, weather, 'outputs/fig5_winter.png')
+    print("  fig5_winter.png")
+    plot_fig6_shoulder(results, shoulder, weather, 'outputs/fig6_shoulder.png')
+    print("  fig6_shoulder.png")
+
+    print("\nDone.")
