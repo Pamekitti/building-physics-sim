@@ -12,16 +12,18 @@ from src.weather import load_epw_weather
 from src.results import (print_table_4, print_table_5, plot_fig2_monthly,
                          plot_fig2_2_breakdown, plot_fig3_pies, plot_fig4_stacked,
                          plot_fig4_2_gains, plot_fig5_winter, plot_fig6_shoulder)
+from src.sensitivity import (run_sensitivity, calc_sensitivity_table,
+                             print_table_7, plot_fig7_scatter, plot_fig8_ranking)
 
 
-def make_setpoint_array(timestamps, constant=True):
+def setpoint_schedule(timestamps, constant=True):
     hrs = pd.Series(timestamps).dt.hour
     if constant:
         return np.full(len(hrs), 21.0)
     return np.where((hrs >= 7) & (hrs < 23), 21.0, 18.0)
 
 
-def make_vent_array(timestamps, constant=True):
+def vent_schedule(timestamps, constant=True):
     hrs = pd.Series(timestamps).dt.hour
     if constant:
         return np.full(len(hrs), 0.5)
@@ -35,17 +37,14 @@ def run_scenarios(weather, planes, air, gains):
         'S3': (True, False),
         'S4': (False, False),
     }
-
     results = {}
     for name, (sp_const, vent_const) in scenarios.items():
-        T_int = make_setpoint_array(weather['timestamp'], sp_const)
-        vent = make_vent_array(weather['timestamp'], vent_const)
-        res = run_hourly(weather, planes, air, T_int, vent_ACH=vent, gains=gains)
+        T_set = setpoint_schedule(weather['timestamp'], sp_const)
+        vent = vent_schedule(weather['timestamp'], vent_const)
+        res = run_hourly(weather, planes, air, T_set, vent_ACH=vent, gains=gains)
         results[name] = res
-
         kwh = res['Q_heat_W'].sum() / 1000
         print(f"  {name}: {kwh:.0f} kWh ({kwh/FLOOR_AREA:.1f} kWh/m²)")
-
     return results
 
 
@@ -58,19 +57,21 @@ if __name__ == '__main__':
         'weather_files/solarposition_data_Glasgow.csv'
     )
     weather['timestamp'] = pd.to_datetime({
-        'year': 2021, 'month': weather['timestamp'].dt.month,
-        'day': weather['timestamp'].dt.day, 'hour': weather['timestamp'].dt.hour
+        'year': 2021,
+        'month': weather['timestamp'].dt.month,
+        'day': weather['timestamp'].dt.day,
+        'hour': weather['timestamp'].dt.hour
     })
     weather = weather.sort_values('timestamp').reset_index(drop=True)
 
-    # setup building
+    # building setup
     planes = [
-        Plane('Roof', 'opaque', 48.0, 0, 0, ROOF_U, ALPHA, EPSILON),
-        Plane('Wall-N', 'opaque', 20.0, 90, 0, WALL_U, ALPHA, EPSILON),
-        Plane('Wall-S', 'opaque', 8.0, 90, 180, WALL_U, ALPHA, EPSILON),
-        Plane('Wall-E', 'opaque', 15.0, 90, 90, WALL_U, ALPHA, EPSILON),
-        Plane('Wall-W', 'opaque', 15.0, 90, 270, WALL_U, ALPHA, EPSILON),
-        Plane('Window-S', 'window', 12.0, 90, 180, WINDOW_U, g=SHGC),
+        Plane('Roof',   'opaque', AREA_ROOF,   0,  0,   ROOF_R, ALPHA, EPSILON),
+        Plane('Wall-N', 'opaque', AREA_WALL_N, 90, 0,   WALL_R, ALPHA, EPSILON),
+        Plane('Wall-S', 'opaque', AREA_WALL_S, 90, 180, WALL_R, ALPHA, EPSILON),
+        Plane('Wall-E', 'opaque', AREA_WALL_E, 90, 90,  WALL_R, ALPHA, EPSILON),
+        Plane('Wall-W', 'opaque', AREA_WALL_W, 90, 270, WALL_R, ALPHA, EPSILON),
+        Plane('Win-S',  'window', AREA_WINDOW, 90, 180, WINDOW_R, g=SHGC),
     ]
     air = AirSide(BUILDING_VOLUME, VENT_FLOW, HRV_EFF, INFILTRATION_ACH)
     gains = InternalGains(INTERNAL_GAIN_W / 1000)
@@ -100,5 +101,20 @@ if __name__ == '__main__':
     print("  fig5_winter.png")
     plot_fig6_shoulder(results, shoulder, weather, 'outputs/fig6_shoulder.png')
     print("  fig6_shoulder.png")
+
+    # sensitivity analysis
+    print("\nRunning sensitivity analysis...")
+    winter_mask = (weather['timestamp'] >= '2021-01-08') & (weather['timestamp'] < '2021-01-15')
+    shoulder_mask = (weather['timestamp'] >= '2021-10-07') & (weather['timestamp'] < '2021-10-14')
+
+    sens_df = run_sensitivity(weather, winter_mask, shoulder_mask)
+    sens_table = calc_sensitivity_table(sens_df)
+    print_table_7(sens_table)
+
+    print("\nGenerating sensitivity figures...")
+    plot_fig7_scatter(sens_df, 'outputs/fig7_sensitivity.png')
+    print("  fig7_sensitivity.png")
+    plot_fig8_ranking(sens_table, 'outputs/fig8_ranking.png')
+    print("  fig8_ranking.png")
 
     print("\nDone.")

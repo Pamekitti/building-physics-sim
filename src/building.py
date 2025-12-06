@@ -1,20 +1,21 @@
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
 class Plane:
     name: str
     type: str
-    area_m2: float
-    tilt_deg: float
-    azimuth_deg: float
-    U: float
-    alpha: Optional[float] = None
-    epsilon: Optional[float] = None
-    g: Optional[float] = None
+    area: float
+    tilt: float
+    azimuth: float
+    r: float
+    alpha: float = None
+    epsilon: float = None
+    g: float = None
     F_sh: float = 1.0
-    ground_contact: bool = False
+
+    def R(self):
+        return self.r / self.area
 
     def is_opaque(self):
         return self.type == 'opaque'
@@ -25,17 +26,17 @@ class Plane:
 
 @dataclass
 class AirSide:
-    V_zone_m3: float
-    Vdot_vent_m3s: float
-    eta_HRV: float
-    ACH_infiltration_h: float
+    volume: float
+    vent_flow: float
+    hrv_eff: float
+    infiltration: float
 
 
 @dataclass
 class InternalGains:
-    Q_equip_kW: float = 0.0
-    Q_occ_kW: float = 0.0
-    Q_light_kW: float = 0.0
+    equipment: float = 0.0
+    occupants: float = 0.0
+    lighting: float = 0.0
 
-    def total_kw(self):
-        return self.Q_equip_kW + self.Q_occ_kW + self.Q_light_kW
+    def total(self):
+        return self.equipment + self.occupants + self.lighting
