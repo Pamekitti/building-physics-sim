@@ -253,38 +253,58 @@ def plot_fig7_scatter(df, path):
         if i == 0:
             ax.legend(loc='upper right', frameon=True, fontsize=8)
 
-    fig.suptitle('Figure 7: Sensitivity Analysis', fontsize=14, fontweight='bold', y=1.01)
+    fig.suptitle('Sensitivity Analysis', fontsize=14, fontweight='bold', y=1.01)
     plt.tight_layout()
     fig.savefig(path, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close(fig)
 
 
 def plot_fig8_ranking(tbl, path):
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-    tbl_sort = tbl.reindex(tbl['NSI_w'].abs().sort_values().index)
+    # Lighter versions for negative values
+    COL_WINTER_POS = '#2E5A8B'
+    COL_WINTER_NEG = '#5A8AC2'
+    COL_SHOULDER_POS = '#D4740C'
+    COL_SHOULDER_NEG = '#E9A35A'
+
+    # Sort by average absolute NSI (largest at top)
+    tbl_sort = tbl.copy()
+    tbl_sort['avg_abs'] = (tbl_sort['NSI_w'].abs() + tbl_sort['NSI_s'].abs()) / 2
+    tbl_sort = tbl_sort.sort_values('avg_abs', ascending=True)
+
     y = np.arange(len(tbl_sort))
     h = 0.35
 
-    bw = ax.barh(y - h/2, tbl_sort['NSI_w'].abs(), h, label='Winter', color=COL_WINTER, edgecolor='white')
-    bs = ax.barh(y + h/2, tbl_sort['NSI_s'].abs(), h, label='Shoulder', color=COL_SHOULDER, edgecolor='white')
+    # Winter bars
+    for i, (idx, row) in enumerate(tbl_sort.iterrows()):
+        nsi = row['NSI_w']
+        color = COL_WINTER_POS if nsi >= 0 else COL_WINTER_NEG
+        ax.barh(i - h/2, nsi, h, color=color, edgecolor='none', label='Winter' if i == 0 else '')
+        offset = 0.02 if nsi >= 0 else -0.02
+        ha = 'left' if nsi >= 0 else 'right'
+        ax.text(nsi + offset, i - h/2, f'{nsi:+.3f}', va='center', ha=ha, fontsize=8, color=color)
+
+    # Shoulder bars
+    for i, (idx, row) in enumerate(tbl_sort.iterrows()):
+        nsi = row['NSI_s']
+        color = COL_SHOULDER_POS if nsi >= 0 else COL_SHOULDER_NEG
+        ax.barh(i + h/2, nsi, h, color=color, edgecolor='none', label='Shoulder' if i == 0 else '')
+        offset = 0.02 if nsi >= 0 else -0.02
+        ha = 'left' if nsi >= 0 else 'right'
+        ax.text(nsi + offset, i + h/2, f'{nsi:+.3f}', va='center', ha=ha, fontsize=8, color=color)
 
     ax.set_yticks(y)
     ax.set_yticklabels(tbl_sort['Parameter'])
-    ax.set_xlabel('Absolute NSI')
-    ax.set_title('Figure 8: Sensitivity Ranking')
-    ax.legend(loc='lower right')
+    ax.axvline(x=0, color='black', linewidth=0.8)
+    ax.set_xlabel('NSI (Normalised Sensitivity Index)')
     ax.grid(True, axis='x', alpha=0.3, lw=0.5)
 
-    xmax = max(tbl_sort['NSI_w'].abs().max(), tbl_sort['NSI_s'].abs().max())
-    ax.set_xlim(0, xmax * 1.25)
+    xmax = max(tbl_sort['NSI_w'].abs().max(), tbl_sort['NSI_s'].abs().max()) * 1.4
+    ax.set_xlim(-xmax, xmax)
 
-    for b in bw:
-        ax.text(b.get_width() + 0.01, b.get_y() + b.get_height()/2, f'{b.get_width():.3f}',
-                va='center', fontsize=8, color=COL_WINTER)
-    for b in bs:
-        ax.text(b.get_width() + 0.01, b.get_y() + b.get_height()/2, f'{b.get_width():.3f}',
-                va='center', fontsize=8, color=COL_SHOULDER)
+    ax.legend(loc='lower right', frameon=True, fancybox=False)
+    ax.set_title('Sensitivity Ranking', fontweight='bold', fontsize=12)
 
     plt.tight_layout()
     fig.savefig(path, dpi=300, bbox_inches='tight', facecolor='white')
