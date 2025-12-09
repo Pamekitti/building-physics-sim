@@ -60,9 +60,8 @@ def _save(fig, path):
 
 
 def print_table_4(results):
-    print("\n" + "=" * 65)
-    print("TABLE 4: Annual Heat Flow Breakdown (Base Case S1)")
-    print("=" * 65)
+    print("\nHeat Flow Breakdown (S1)")
+    print("-" * 50)
 
     s1 = results["S1"]
     losses = {
@@ -80,34 +79,30 @@ def print_table_4(results):
     total_loss = sum(losses.values())
     total_gain = sum(gains.values())
 
-    print(f"\n{'HEAT LOSSES':<20} {'kWh':>12} {'%':>10}")
-    print("-" * 44)
+    print("Losses:")
     for k, v in losses.items():
-        print(f"  {k:<18} {v:>10.0f} {v / total_loss * 100:>9.1f}%")
-    print("-" * 44)
-    print(f"  {'Total Losses':<18} {total_loss:>10.0f} {'100.0%':>10}")
+        print(f"  {k}: {v:.0f} kWh ({v/total_loss*100:.1f}%)")
+    print(f"  Total: {total_loss:.0f} kWh")
 
-    print(f"\n{'HEAT GAINS':<20} {'kWh':>12} {'%':>10}")
-    print("-" * 44)
+    print("Gains:")
     for k, v in gains.items():
-        print(f"  {k:<18} {v:>10.0f} {v / total_gain * 100:>9.1f}%")
-    print("-" * 44)
-    print(f"  {'Total Gains':<18} {total_gain:>10.0f} {'100.0%':>10}")
+        print(f"  {k}: {v:.0f} kWh ({v/total_gain*100:.1f}%)")
+    print(f"  Total: {total_gain:.0f} kWh")
 
 
 def print_table_5(results, floor_area):
-    print("\n" + "=" * 65)
-    print("TABLE 5: Annual Heating Demand Comparison")
-    print("=" * 65)
+    print("\nAnnual Heating Comparison")
+    print("-" * 50)
 
     base = results["S1"]["Q_heat_W"].sum() / 1000
-    print(f"\n{'Scenario':<35} {'kWh':>10} {'kWh/m²':>10} {'vs S1':>10}")
-    print("-" * 67)
     for s in ["S1", "S2", "S3", "S4"]:
         kwh = results[s]["Q_heat_W"].sum() / 1000
         intensity = kwh / floor_area
-        delta = "—" if s == "S1" else f"{(kwh - base) / base * 100:+.1f}%"
-        print(f"  {SCENARIO_NAMES[s]:<33} {kwh:>8.0f} {intensity:>10.1f} {delta:>10}")
+        if s == "S1":
+            print(f"{s}: {kwh:.0f} kWh ({intensity:.1f} kWh/m2)")
+        else:
+            diff = (kwh - base) / base * 100
+            print(f"{s}: {kwh:.0f} kWh ({intensity:.1f} kWh/m2, {diff:+.1f}% vs S1)")
 
 
 def plot_fig2_monthly(results, weather, path):

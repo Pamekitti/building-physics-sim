@@ -32,225 +32,258 @@ COL_WINTER = '#1a365d'
 COL_SHOULDER = '#e67300'
 
 
-def base_planes(azimuth=180, alpha=ALPHA):
-    return [
-        Plane('Roof',   'opaque', AREA_ROOF,   0,  0,                     ROOF_R, alpha, EPSILON),
-        Plane('Wall-N', 'opaque', AREA_WALL_N, 90, (azimuth+180) % 360,   WALL_R, alpha, EPSILON),
-        Plane('Wall-S', 'opaque', AREA_WALL_S, 90, azimuth,               WALL_R, alpha, EPSILON),
-        Plane('Wall-E', 'opaque', AREA_WALL_E, 90, (azimuth+90) % 360,    WALL_R, alpha, EPSILON),
-        Plane('Wall-W', 'opaque', AREA_WALL_W, 90, (azimuth+270) % 360,   WALL_R, alpha, EPSILON),
-        Plane('Win-S',  'window', AREA_WINDOW, 90, azimuth,               WINDOW_R, g=SHGC),
-    ]
+def base_planes(azimuth: float = 180, alpha: float = ALPHA) -> list:
+    """Create building planes with given window azimuth and surface absorptance."""
+    azimuth_N = (azimuth + 180) % 360
+    azimuth_S = azimuth
+    azimuth_E = (azimuth + 90) % 360
+    azimuth_W = (azimuth + 270) % 360
+
+    roof = Plane('Roof', 'opaque', AREA_ROOF, 0, 0, ROOF_R, alpha, EPSILON)
+    wall_N = Plane('Wall-N', 'opaque', AREA_WALL_N, 90, azimuth_N, WALL_R, alpha, EPSILON)
+    wall_S = Plane('Wall-S', 'opaque', AREA_WALL_S, 90, azimuth_S, WALL_R, alpha, EPSILON)
+    wall_E = Plane('Wall-E', 'opaque', AREA_WALL_E, 90, azimuth_E, WALL_R, alpha, EPSILON)
+    wall_W = Plane('Wall-W', 'opaque', AREA_WALL_W, 90, azimuth_W, WALL_R, alpha, EPSILON)
+    window_S = Plane('Win-S', 'window', AREA_WINDOW, 90, azimuth_S, WINDOW_R, g=SHGC)
+
+    return [roof, wall_N, wall_S, wall_E, wall_W, window_S]
 
 
-def planes_with_insulation(k_ins):
-    """Vary fiberglass conductivity, recalc total r."""
-    # wall
-    d_wall = WALL_LAYERS['fiberglass']['d']
+def planes_with_insulation(k_insulation: float) -> list:
+    """Create building planes with varied fiberglass conductivity."""
+    # Wall R-value with new insulation
+    d_wall_fiberglass = WALL_LAYERS['fiberglass']['d']
     r_wall_other = WALL_R - WALL_LAYERS['fiberglass']['r']
-    new_wall_r = r_wall_other + d_wall / k_ins
+    new_wall_R = r_wall_other + d_wall_fiberglass / k_insulation
 
-    # roof
-    d_roof = ROOF_LAYERS['fiberglass']['d']
+    # Roof R-value with new insulation
+    d_roof_fiberglass = ROOF_LAYERS['fiberglass']['d']
     r_roof_other = ROOF_R - ROOF_LAYERS['fiberglass']['r']
-    new_roof_r = r_roof_other + d_roof / k_ins
+    new_roof_R = r_roof_other + d_roof_fiberglass / k_insulation
 
-    return [
-        Plane('Roof',   'opaque', AREA_ROOF,   0,  0,   new_roof_r, ALPHA, EPSILON),
-        Plane('Wall-N', 'opaque', AREA_WALL_N, 90, 0,   new_wall_r, ALPHA, EPSILON),
-        Plane('Wall-S', 'opaque', AREA_WALL_S, 90, 180, new_wall_r, ALPHA, EPSILON),
-        Plane('Wall-E', 'opaque', AREA_WALL_E, 90, 90,  new_wall_r, ALPHA, EPSILON),
-        Plane('Wall-W', 'opaque', AREA_WALL_W, 90, 270, new_wall_r, ALPHA, EPSILON),
-        Plane('Win-S',  'window', AREA_WINDOW, 90, 180, WINDOW_R, g=SHGC),
-    ]
+    roof = Plane('Roof', 'opaque', AREA_ROOF, 0, 0, new_roof_R, ALPHA, EPSILON)
+    wall_N = Plane('Wall-N', 'opaque', AREA_WALL_N, 90, 0, new_wall_R, ALPHA, EPSILON)
+    wall_S = Plane('Wall-S', 'opaque', AREA_WALL_S, 90, 180, new_wall_R, ALPHA, EPSILON)
+    wall_E = Plane('Wall-E', 'opaque', AREA_WALL_E, 90, 90, new_wall_R, ALPHA, EPSILON)
+    wall_W = Plane('Wall-W', 'opaque', AREA_WALL_W, 90, 270, new_wall_R, ALPHA, EPSILON)
+    window_S = Plane('Win-S', 'window', AREA_WINDOW, 90, 180, WINDOW_R, g=SHGC)
+
+    return [roof, wall_N, wall_S, wall_E, wall_W, window_S]
 
 
-def run_sensitivity(weather, winter_mask, shoulder_mask):
+def run_sensitivity(weather: pd.DataFrame, winter_mask, shoulder_mask) -> pd.DataFrame:
+    """Run sensitivity analysis for all parameters."""
     results = []
+    n_hours = len(weather)
 
     planes = base_planes()
     air = AirSide(BUILDING_VOLUME, VENT_FLOW, HRV_EFF, INFILTRATION_ACH)
     gains = InternalGains(INTERNAL_GAIN_W / 1000)
-    T_set = np.full(len(weather), 21.0)
-    vent = np.full(len(weather), 0.5)
+    T_set: np.ndarray = np.full(n_hours, 21.0)
+    vent_ACH: np.ndarray = np.full(n_hours, 0.5)
 
-    base = run_hourly(weather, planes, air, T_set, vent_ACH=vent, gains=gains)
-    base_w = base[winter_mask]['Q_heat_W'].sum() / 1000
-    base_s = base[shoulder_mask]['Q_heat_W'].sum() / 1000
+    # Baseline
+    base_result: pd.DataFrame = run_hourly(weather, planes, air, T_set, vent_ACH=vent_ACH, gains=gains)
+    base_winter_kWh = base_result[winter_mask]['Q_heat_W'].sum() / 1000
+    base_shoulder_kWh = base_result[shoulder_mask]['Q_heat_W'].sum() / 1000
 
-    # orientation
+    # Orientation sensitivity
     print("  Orientation...")
-    for az in np.arange(0, 360, 30):
-        res = run_hourly(weather, base_planes(az), air, T_set, vent_ACH=vent, gains=gains)
+    orientation_values: np.ndarray = np.arange(0, 360, 30)
+    for azimuth in orientation_values:
+        result: pd.DataFrame = run_hourly(weather, base_planes(azimuth), air, T_set, vent_ACH=vent_ACH, gains=gains)
         results.append({
-            'param': 'Orientation', 'val': az,
-            'val_norm': np.cos(np.deg2rad(az - 180)),
-            'Q_w': res[winter_mask]['Q_heat_W'].sum()/1000,
-            'Q_s': res[shoulder_mask]['Q_heat_W'].sum()/1000,
+            'param': 'Orientation',
+            'val': azimuth,
+            'val_norm': np.cos(np.deg2rad(azimuth - 180)),
+            'Q_w': result[winter_mask]['Q_heat_W'].sum() / 1000,
+            'Q_s': result[shoulder_mask]['Q_heat_W'].sum() / 1000,
         })
 
-    # internal gains
+    # Internal gains sensitivity
     print("  Internal gains...")
-    for Q in np.linspace(100, 400, 10):
-        g = InternalGains(Q / 1000)
-        res = run_hourly(weather, planes, air, T_set, vent_ACH=vent, gains=g)
+    internal_gain_values: np.ndarray = np.linspace(100, 400, 10)
+    for Q_internal in internal_gain_values:
+        gains_varied = InternalGains(Q_internal / 1000)
+        result: pd.DataFrame = run_hourly(weather, planes, air, T_set, vent_ACH=vent_ACH, gains=gains_varied)
         results.append({
-            'param': 'Internal gains', 'val': Q,
-            'val_norm': Q / INTERNAL_GAIN_W,
-            'Q_w': res[winter_mask]['Q_heat_W'].sum()/1000,
-            'Q_s': res[shoulder_mask]['Q_heat_W'].sum()/1000,
+            'param': 'Internal gains',
+            'val': Q_internal,
+            'val_norm': Q_internal / INTERNAL_GAIN_W,
+            'Q_w': result[winter_mask]['Q_heat_W'].sum() / 1000,
+            'Q_s': result[shoulder_mask]['Q_heat_W'].sum() / 1000,
         })
 
-    # insulation conductivity
+    # Insulation conductivity sensitivity
     print("  Insulation conductivity...")
-    for k in np.linspace(0.030, 0.050, 11):
-        res = run_hourly(weather, planes_with_insulation(k), air, T_set, vent_ACH=vent, gains=gains)
+    k_values: np.ndarray = np.linspace(0.030, 0.050, 11)
+    for k_insulation in k_values:
+        result: pd.DataFrame = run_hourly(weather, planes_with_insulation(k_insulation), air, T_set, vent_ACH=vent_ACH, gains=gains)
         results.append({
-            'param': 'Insulation k', 'val': k,
-            'val_norm': k / 0.040,
-            'Q_w': res[winter_mask]['Q_heat_W'].sum()/1000,
-            'Q_s': res[shoulder_mask]['Q_heat_W'].sum()/1000,
+            'param': 'Insulation k',
+            'val': k_insulation,
+            'val_norm': k_insulation / 0.040,
+            'Q_w': result[winter_mask]['Q_heat_W'].sum() / 1000,
+            'Q_s': result[shoulder_mask]['Q_heat_W'].sum() / 1000,
         })
 
-    # temperature offset
+    # Temperature offset sensitivity
     print("  Temperature offset...")
-    for dT in np.linspace(-2, 2, 9):
-        w_mod = weather.copy()
-        w_mod['T_out_C'] = w_mod['T_out_C'] + dT
-        res = run_hourly(w_mod, planes, air, T_set, vent_ACH=vent, gains=gains)
+    temp_offset_values: np.ndarray = np.linspace(-2, 2, 9)
+    for dT in temp_offset_values:
+        weather_modified: pd.DataFrame = weather.copy()
+        weather_modified['T_out_C'] = weather_modified['T_out_C'] + dT
+        result: pd.DataFrame = run_hourly(weather_modified, planes, air, T_set, vent_ACH=vent_ACH, gains=gains)
         results.append({
-            'param': 'Temp offset', 'val': dT,
+            'param': 'Temp offset',
+            'val': dT,
             'val_norm': dT,
-            'Q_w': res[winter_mask]['Q_heat_W'].sum()/1000,
-            'Q_s': res[shoulder_mask]['Q_heat_W'].sum()/1000,
+            'Q_w': result[winter_mask]['Q_heat_W'].sum() / 1000,
+            'Q_s': result[shoulder_mask]['Q_heat_W'].sum() / 1000,
         })
 
-    # absorptance
+    # Absorptance sensitivity
     print("  Surface absorptance...")
-    for a in np.linspace(0.3, 0.9, 13):
-        res = run_hourly(weather, base_planes(alpha=a), air, T_set, vent_ACH=vent, gains=gains)
+    absorptance_values: np.ndarray = np.linspace(0.3, 0.9, 13)
+    for alpha_varied in absorptance_values:
+        result: pd.DataFrame = run_hourly(weather, base_planes(alpha=alpha_varied), air, T_set, vent_ACH=vent_ACH, gains=gains)
         results.append({
-            'param': 'Absorptance', 'val': a,
-            'val_norm': a / ALPHA,
-            'Q_w': res[winter_mask]['Q_heat_W'].sum()/1000,
-            'Q_s': res[shoulder_mask]['Q_heat_W'].sum()/1000,
+            'param': 'Absorptance',
+            'val': alpha_varied,
+            'val_norm': alpha_varied / ALPHA,
+            'Q_w': result[winter_mask]['Q_heat_W'].sum() / 1000,
+            'Q_s': result[shoulder_mask]['Q_heat_W'].sum() / 1000,
         })
 
-    # infiltration
+    # Infiltration sensitivity
     print("  Infiltration ACH...")
-    for ach in np.linspace(0.2, 1.0, 11):
-        a_var = AirSide(BUILDING_VOLUME, VENT_FLOW, HRV_EFF, ach)
-        res = run_hourly(weather, planes, a_var, T_set, vent_ACH=vent, gains=gains)
+    infiltration_values: np.ndarray = np.linspace(0.2, 1.0, 11)
+    for ach_varied in infiltration_values:
+        air_varied = AirSide(BUILDING_VOLUME, VENT_FLOW, HRV_EFF, ach_varied)
+        result: pd.DataFrame = run_hourly(weather, planes, air_varied, T_set, vent_ACH=vent_ACH, gains=gains)
         results.append({
-            'param': 'Infiltration', 'val': ach,
-            'val_norm': ach / INFILTRATION_ACH,
-            'Q_w': res[winter_mask]['Q_heat_W'].sum()/1000,
-            'Q_s': res[shoulder_mask]['Q_heat_W'].sum()/1000,
+            'param': 'Infiltration',
+            'val': ach_varied,
+            'val_norm': ach_varied / INFILTRATION_ACH,
+            'Q_w': result[winter_mask]['Q_heat_W'].sum() / 1000,
+            'Q_s': result[shoulder_mask]['Q_heat_W'].sum() / 1000,
         })
 
-    df = pd.DataFrame(results)
-    df['base_w'] = base_w
-    df['base_s'] = base_s
+    df: pd.DataFrame = pd.DataFrame(results)
+    df['base_w'] = base_winter_kWh
+    df['base_s'] = base_shoulder_kWh
     return df
 
 
-def calc_nsi(df, param, period='w'):
-    sub = df[df['param'] == param]
-    Q = sub[f'Q_{period}'].values
-    base = sub[f'base_{period}'].iloc[0]
+def calc_nsi(df: pd.DataFrame, param: str, period: str = 'w') -> float:
+    """Calculate Normalised Sensitivity Index for a parameter."""
+    subset: pd.DataFrame = df[df['param'] == param]
+    Q_values: np.ndarray = subset[f'Q_{period}'].values
+    base_value = subset[f'base_{period}'].iloc[0]
 
     if param == 'Orientation':
-        return (Q.max() - Q.min()) / base / 2.0
+        return (Q_values.max() - Q_values.min()) / base_value / 2.0
     elif param == 'Temp offset':
-        slope, *_ = stats.linregress(sub['val'].values, Q)
-        return slope / base
+        slope, intercept, r_value, p_value, std_err = stats.linregress(subset['val'].values, Q_values)
+        return slope / base_value
     else:
-        slope, *_ = stats.linregress(sub['val_norm'].values, Q / base)
+        slope, intercept, r_value, p_value, std_err = stats.linregress(subset['val_norm'].values, Q_values / base_value)
         return slope
 
 
-def calc_sensitivity_table(df):
-    params = ['Orientation', 'Internal gains', 'Insulation k', 'Temp offset', 'Absorptance', 'Infiltration']
+def calc_sensitivity_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate sensitivity table with NSI values and rankings."""
+    param_names = ['Orientation', 'Internal gains', 'Insulation k', 'Temp offset', 'Absorptance', 'Infiltration']
     rows = []
-    for p in params:
-        sub = df[df['param'] == p]
+
+    for param in param_names:
+        subset: pd.DataFrame = df[df['param'] == param]
         rows.append({
-            'Parameter': p,
-            'Q_w_min': sub['Q_w'].min(), 'Q_w_max': sub['Q_w'].max(),
-            'NSI_w': calc_nsi(df, p, 'w'),
-            'Q_s_min': sub['Q_s'].min(), 'Q_s_max': sub['Q_s'].max(),
-            'NSI_s': calc_nsi(df, p, 's'),
+            'Parameter': param,
+            'Q_w_min': subset['Q_w'].min(),
+            'Q_w_max': subset['Q_w'].max(),
+            'NSI_w': calc_nsi(df, param, 'w'),
+            'Q_s_min': subset['Q_s'].min(),
+            'Q_s_max': subset['Q_s'].max(),
+            'NSI_s': calc_nsi(df, param, 's'),
         })
-    tbl = pd.DataFrame(rows)
-    tbl['Rank_w'] = tbl['NSI_w'].abs().rank(ascending=False).astype(int)
-    tbl['Rank_s'] = tbl['NSI_s'].abs().rank(ascending=False).astype(int)
-    return tbl
+
+    table: pd.DataFrame = pd.DataFrame(rows)
+    table['Rank_w'] = table['NSI_w'].abs().rank(ascending=False).astype(int)
+    table['Rank_s'] = table['NSI_s'].abs().rank(ascending=False).astype(int)
+    return table
 
 
-def print_table_7(tbl):
-    print("\n" + "="*90)
-    print("TABLE 7: Sensitivity Analysis Results")
-    print("="*90)
-    print(f"\n{'Parameter':<18} {'Winter Week':^35} {'Shoulder Week':^35}")
-    print(f"{'':<18} {'Q Range (kWh)':<15} {'NSI':>8} {'Rank':>6}   {'Q Range (kWh)':<15} {'NSI':>8} {'Rank':>6}")
-    print("-"*90)
-    for _, r in tbl.iterrows():
-        w_rng = f"{r['Q_w_min']:.1f}-{r['Q_w_max']:.1f}"
-        s_rng = f"{r['Q_s_min']:.1f}-{r['Q_s_max']:.1f}"
-        print(f"  {r['Parameter']:<16} {w_rng:<15} {r['NSI_w']:>+8.3f} {r['Rank_w']:>6}   "
-              f"{s_rng:<15} {r['NSI_s']:>+8.3f} {r['Rank_s']:>6}")
+def print_table_7(table: pd.DataFrame) -> None:
+    """Print sensitivity analysis results."""
+    print("\nSensitivity Analysis Results")
+    print("-" * 80)
+
+    for row_index in range(len(table)):
+        row = table.iloc[row_index]
+        print(f"{row['Parameter']}: Winter {row['Q_w_min']:.1f}-{row['Q_w_max']:.1f} kWh (NSI={row['NSI_w']:+.3f}), "
+              f"Shoulder {row['Q_s_min']:.1f}-{row['Q_s_max']:.1f} kWh (NSI={row['NSI_s']:+.3f})")
 
 
-def plot_fig7_scatter(df, path):
+def plot_fig7_scatter(df: pd.DataFrame, path: str) -> None:
+    """Plot sensitivity scatter plots with trend lines."""
     fig, axes = plt.subplots(2, 3, figsize=(14, 8))
     axes = axes.flatten()
 
-    params = ['Orientation', 'Internal gains', 'Insulation k', 'Temp offset', 'Absorptance', 'Infiltration']
-    xlabels = ['Azimuth (deg)', 'Internal Gains (W)', 'Conductivity (W/mK)',
-               'Temp Offset (K)', 'Absorptance', 'Infiltration (ACH)']
+    param_names = ['Orientation', 'Internal gains', 'Insulation k', 'Temp offset', 'Absorptance', 'Infiltration']
+    x_labels = ['Azimuth (deg)', 'Internal Gains (W)', 'Conductivity (W/mK)',
+                'Temp Offset (K)', 'Absorptance', 'Infiltration (ACH)']
 
-    for i, (p, xl) in enumerate(zip(params, xlabels)):
-        ax = axes[i]
-        sub = df[df['param'] == p]
-        x = sub['val'].values
-        yw, ys = sub['Q_w'].values, sub['Q_s'].values
+    for plot_index in range(len(param_names)):
+        param = param_names[plot_index]
+        x_label = x_labels[plot_index]
+        ax = axes[plot_index]
 
-        ax.scatter(x, yw, c=COL_WINTER, s=35, edgecolors='white', lw=0.5, label='Winter')
-        ax.scatter(x, ys, c=COL_SHOULDER, s=35, edgecolors='white', lw=0.5, label='Shoulder')
+        subset: pd.DataFrame = df[df['param'] == param]
+        x_values: np.ndarray = subset['val'].values
+        Q_winter: np.ndarray = subset['Q_w'].values
+        Q_shoulder: np.ndarray = subset['Q_s'].values
 
-        # trend lines
-        if p == 'Orientation':
-            xc = np.cos(np.deg2rad(x - 180))
-            xfit = np.linspace(x.min(), x.max(), 100)
-            xcfit = np.cos(np.deg2rad(xfit - 180))
-            sw, iw, rw, *_ = stats.linregress(xc, yw)
-            ss, Is, rs, *_ = stats.linregress(xc, ys)
-            ax.plot(xfit, sw*xcfit + iw, '--', c=COL_WINTER, lw=1, alpha=0.7)
-            ax.plot(xfit, ss*xcfit + Is, '--', c=COL_SHOULDER, lw=1, alpha=0.7)
-            ax.text(0.05, 0.95, f'R²={rw**2:.3f}', transform=ax.transAxes, fontsize=8, va='top', color=COL_WINTER)
-            ax.text(0.05, 0.87, f'R²={rs**2:.3f}', transform=ax.transAxes, fontsize=8, va='top', color=COL_SHOULDER)
+        ax.scatter(x_values, Q_winter, c=COL_WINTER, s=35, edgecolors='white', lw=0.5, label='Winter')
+        ax.scatter(x_values, Q_shoulder, c=COL_SHOULDER, s=35, edgecolors='white', lw=0.5, label='Shoulder')
+
+        # Trend lines
+        x_fit: np.ndarray = np.linspace(x_values.min(), x_values.max(), 100)
+
+        if param == 'Orientation':
+            x_cos: np.ndarray = np.cos(np.deg2rad(x_values - 180))
+            x_cos_fit: np.ndarray = np.cos(np.deg2rad(x_fit - 180))
+
+            slope_w, intercept_w, r_w, p_w, se_w = stats.linregress(x_cos, Q_winter)
+            slope_s, intercept_s, r_s, p_s, se_s = stats.linregress(x_cos, Q_shoulder)
+
+            ax.plot(x_fit, slope_w * x_cos_fit + intercept_w, '--', c=COL_WINTER, lw=1, alpha=0.7)
+            ax.plot(x_fit, slope_s * x_cos_fit + intercept_s, '--', c=COL_SHOULDER, lw=1, alpha=0.7)
+            ax.text(0.05, 0.95, f'R²={r_w**2:.3f}', transform=ax.transAxes, fontsize=8, va='top', color=COL_WINTER)
+            ax.text(0.05, 0.87, f'R²={r_s**2:.3f}', transform=ax.transAxes, fontsize=8, va='top', color=COL_SHOULDER)
         else:
-            sw, iw, rw, *_ = stats.linregress(x, yw)
-            ss, Is, rs, *_ = stats.linregress(x, ys)
-            xfit = np.linspace(x.min(), x.max(), 100)
-            ax.plot(xfit, sw*xfit + iw, '--', c=COL_WINTER, lw=1, alpha=0.7)
-            ax.plot(xfit, ss*xfit + Is, '--', c=COL_SHOULDER, lw=1, alpha=0.7)
-            ax.text(0.05, 0.95, f'slope={sw:.2f}, R²={rw**2:.3f}', transform=ax.transAxes, fontsize=8, va='top', color=COL_WINTER)
-            ax.text(0.05, 0.87, f'slope={ss:.2f}, R²={rs**2:.3f}', transform=ax.transAxes, fontsize=8, va='top', color=COL_SHOULDER)
+            slope_w, intercept_w, r_w, p_w, se_w = stats.linregress(x_values, Q_winter)
+            slope_s, intercept_s, r_s, p_s, se_s = stats.linregress(x_values, Q_shoulder)
 
-        ax.set_xlabel(xl)
+            ax.plot(x_fit, slope_w * x_fit + intercept_w, '--', c=COL_WINTER, lw=1, alpha=0.7)
+            ax.plot(x_fit, slope_s * x_fit + intercept_s, '--', c=COL_SHOULDER, lw=1, alpha=0.7)
+            ax.text(0.05, 0.95, f'slope={slope_w:.2f}, R²={r_w**2:.3f}', transform=ax.transAxes, fontsize=8, va='top', color=COL_WINTER)
+            ax.text(0.05, 0.87, f'slope={slope_s:.2f}, R²={r_s**2:.3f}', transform=ax.transAxes, fontsize=8, va='top', color=COL_SHOULDER)
+
+        ax.set_xlabel(x_label)
         ax.set_ylabel('Weekly Heating (kWh)')
-        ax.set_title(p)
+        ax.set_title(param)
         ax.grid(True, alpha=0.3, lw=0.5)
 
-        # margins
-        dx = (x.max() - x.min()) * 0.08
-        ax.set_xlim(x.min() - dx, x.max() + dx)
-        ally = np.concatenate([yw, ys])
-        dy = (ally.max() - ally.min())
-        ax.set_ylim(ally.min() - dy*0.15, ally.max() + dy*0.40)
+        # Axis margins
+        x_margin = (x_values.max() - x_values.min()) * 0.08
+        ax.set_xlim(x_values.min() - x_margin, x_values.max() + x_margin)
 
-        if i == 0:
+        all_Q: np.ndarray = np.concatenate([Q_winter, Q_shoulder])
+        y_range = all_Q.max() - all_Q.min()
+        ax.set_ylim(all_Q.min() - y_range * 0.15, all_Q.max() + y_range * 0.40)
+
+        if plot_index == 0:
             ax.legend(loc='upper right', frameon=True, fontsize=8)
 
     fig.suptitle('Sensitivity Analysis', fontsize=14, fontweight='bold', y=1.01)
@@ -259,49 +292,59 @@ def plot_fig7_scatter(df, path):
     plt.close(fig)
 
 
-def plot_fig8_ranking(tbl, path):
+def plot_fig8_ranking(table: pd.DataFrame, path: str) -> None:
+    """Plot horizontal bar chart showing sensitivity ranking."""
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Lighter versions for negative values
+    # Color scheme
     COL_WINTER_POS = '#2E5A8B'
     COL_WINTER_NEG = '#5A8AC2'
     COL_SHOULDER_POS = '#D4740C'
     COL_SHOULDER_NEG = '#E9A35A'
 
     # Sort by average absolute NSI (largest at top)
-    tbl_sort = tbl.copy()
-    tbl_sort['avg_abs'] = (tbl_sort['NSI_w'].abs() + tbl_sort['NSI_s'].abs()) / 2
-    tbl_sort = tbl_sort.sort_values('avg_abs', ascending=True)
+    table_sorted: pd.DataFrame = table.copy()
+    table_sorted['avg_abs'] = (table_sorted['NSI_w'].abs() + table_sorted['NSI_s'].abs()) / 2
+    table_sorted = table_sorted.sort_values('avg_abs', ascending=True).reset_index(drop=True)
 
-    y = np.arange(len(tbl_sort))
-    h = 0.35
+    y_positions: np.ndarray = np.arange(len(table_sorted))
+    bar_height = 0.35
 
     # Winter bars
-    for i, (idx, row) in enumerate(tbl_sort.iterrows()):
-        nsi = row['NSI_w']
-        color = COL_WINTER_POS if nsi >= 0 else COL_WINTER_NEG
-        ax.barh(i - h/2, nsi, h, color=color, edgecolor='none', label='Winter' if i == 0 else '')
-        offset = 0.02 if nsi >= 0 else -0.02
-        ha = 'left' if nsi >= 0 else 'right'
-        ax.text(nsi + offset, i - h/2, f'{nsi:+.3f}', va='center', ha=ha, fontsize=8, color=color)
+    for row_index in range(len(table_sorted)):
+        row = table_sorted.iloc[row_index]
+        nsi_winter = row['NSI_w']
+        color = COL_WINTER_POS if nsi_winter >= 0 else COL_WINTER_NEG
+        label = 'Winter' if row_index == 0 else ''
+        ax.barh(row_index - bar_height / 2, nsi_winter, bar_height, color=color, edgecolor='none', label=label)
+
+        text_offset = 0.02 if nsi_winter >= 0 else -0.02
+        text_align = 'left' if nsi_winter >= 0 else 'right'
+        ax.text(nsi_winter + text_offset, row_index - bar_height / 2, f'{nsi_winter:+.3f}',
+                va='center', ha=text_align, fontsize=8, color=color)
 
     # Shoulder bars
-    for i, (idx, row) in enumerate(tbl_sort.iterrows()):
-        nsi = row['NSI_s']
-        color = COL_SHOULDER_POS if nsi >= 0 else COL_SHOULDER_NEG
-        ax.barh(i + h/2, nsi, h, color=color, edgecolor='none', label='Shoulder' if i == 0 else '')
-        offset = 0.02 if nsi >= 0 else -0.02
-        ha = 'left' if nsi >= 0 else 'right'
-        ax.text(nsi + offset, i + h/2, f'{nsi:+.3f}', va='center', ha=ha, fontsize=8, color=color)
+    for row_index in range(len(table_sorted)):
+        row = table_sorted.iloc[row_index]
+        nsi_shoulder = row['NSI_s']
+        color = COL_SHOULDER_POS if nsi_shoulder >= 0 else COL_SHOULDER_NEG
+        label = 'Shoulder' if row_index == 0 else ''
+        ax.barh(row_index + bar_height / 2, nsi_shoulder, bar_height, color=color, edgecolor='none', label=label)
 
-    ax.set_yticks(y)
-    ax.set_yticklabels(tbl_sort['Parameter'])
+        text_offset = 0.02 if nsi_shoulder >= 0 else -0.02
+        text_align = 'left' if nsi_shoulder >= 0 else 'right'
+        ax.text(nsi_shoulder + text_offset, row_index + bar_height / 2, f'{nsi_shoulder:+.3f}',
+                va='center', ha=text_align, fontsize=8, color=color)
+
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(table_sorted['Parameter'])
     ax.axvline(x=0, color='black', linewidth=0.8)
     ax.set_xlabel('NSI (Normalised Sensitivity Index)')
     ax.grid(True, axis='x', alpha=0.3, lw=0.5)
 
-    xmax = max(tbl_sort['NSI_w'].abs().max(), tbl_sort['NSI_s'].abs().max()) * 1.4
-    ax.set_xlim(-xmax, xmax)
+    max_abs_nsi = max(table_sorted['NSI_w'].abs().max(), table_sorted['NSI_s'].abs().max())
+    x_limit = max_abs_nsi * 1.4
+    ax.set_xlim(-x_limit, x_limit)
 
     ax.legend(loc='lower right', frameon=True, fancybox=False)
     ax.set_title('Sensitivity Ranking', fontweight='bold', fontsize=12)
