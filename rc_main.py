@@ -1,59 +1,59 @@
 #!/usr/bin/env python3
 # Compare lightweight vs heavyweight buildings with RC model
+# 3-resistance model following Gori (2017)
 
 import os
 import pandas as pd
 
 from config import (
-    FLOOR_AREA, BUILDING_VOLUME,
+    BUILDING_VOLUME,
     AREA_ROOF, AREA_WALL_N, AREA_WALL_S, AREA_WALL_E, AREA_WALL_W, AREA_WINDOW,
-    WALL_R, ROOF_R, WINDOW_R,
-    ALPHA, SHGC, INFILTRATION_ACH, INTERNAL_GAIN_W
+    WINDOW_R, ALPHA, SHGC, INFILTRATION_ACH, INTERNAL_GAIN_W
 )
 from config_heavyweight import (
-    WALL_R_HW, ROOF_R_HW,
-    C_WALL_HW, C_ROOF_HW,
-    C_WALL_LW, C_ROOF_LW,
-    TOTAL_WALL_AREA
+    WALL_R1_LW, WALL_R2_LW, WALL_R3_LW, WALL_CA_LW,
+    WALL_R1_HW, WALL_R2_HW, WALL_R3_HW, WALL_CA_HW,
+    ROOF_R1, ROOF_R2, ROOF_R3, ROOF_CA_LW, ROOF_CA_HW,
+    C_WALL_LW, C_WALL_HW, C_ROOF_LW, C_ROOF_HW
 )
 from src.building import AirSide, InternalGains
 from src.weather import load_epw_weather
 from src.rc_model import run_rc_hourly
-from src.rc_plots import (plot_rc_winter_week, plot_rc_shoulder_week,
+from src.rc_plots import (plot_rc_heatup_week, plot_rc_shoulder_week, plot_rc_shoulder_heating,
                           plot_heating_histogram, plot_heating_comparison_histogram,
                           plot_monthly_peak_demand)
 
 
-def build_envelope(wall_R: float, roof_R: float, C_wall_total: float, C_roof: float) -> dict:
-    """Build envelope parameters for RC model."""
+def build_envelope_3r(wall_R1, wall_R2, wall_R3, wall_CA,
+                      roof_R1, roof_R2, roof_R3, roof_CA) -> dict:
+    """Build envelope parameters for 3-resistance RC model.
 
-    # Split R equally between indoor and outdoor sides
-    r1_wall = wall_R / 2
-    r2_wall = wall_R / 2
-    r1_roof = roof_R / 2
-    r2_roof = roof_R / 2
-
-    # Distribute wall capacitance by area
-    C_N = C_wall_total * (AREA_WALL_N / TOTAL_WALL_AREA)
-    C_S = C_wall_total * (AREA_WALL_S / TOTAL_WALL_AREA)
-    C_E = C_wall_total * (AREA_WALL_E / TOTAL_WALL_AREA)
-    C_W = C_wall_total * (AREA_WALL_W / TOTAL_WALL_AREA)
+    R1: thermal mass to indoor (m²K/W)
+    R2: thermal mass to external surface node (m²K/W)
+    R3: external surface resistance (m²K/W)
+    CA: thermal capacitance per unit area (kJ/m²K)
+    """
+    # Convert C/A from kJ/m²K to J/m²K
+    wall_C = wall_CA * 1000
+    roof_C = roof_CA * 1000
 
     # Roof
     roof = {
-        'R1': r1_roof / AREA_ROOF,
-        'R2': r2_roof / AREA_ROOF,
-        'C': C_roof,
+        'R1': roof_R1,
+        'R2': roof_R2,
+        'R3': roof_R3,
+        'C': roof_C,
         'alpha': ALPHA,
+        'area': AREA_ROOF,
     }
 
-    # Walls
-    wall_N = {'R1': r1_wall / AREA_WALL_N, 'R2': r2_wall / AREA_WALL_N, 'C': C_N, 'alpha': ALPHA}
-    wall_S = {'R1': r1_wall / AREA_WALL_S, 'R2': r2_wall / AREA_WALL_S, 'C': C_S, 'alpha': ALPHA}
-    wall_E = {'R1': r1_wall / AREA_WALL_E, 'R2': r2_wall / AREA_WALL_E, 'C': C_E, 'alpha': ALPHA}
-    wall_W = {'R1': r1_wall / AREA_WALL_W, 'R2': r2_wall / AREA_WALL_W, 'C': C_W, 'alpha': ALPHA}
+    # Walls - same R values per unit area, different areas
+    wall_N = {'R1': wall_R1, 'R2': wall_R2, 'R3': wall_R3, 'C': wall_C, 'alpha': ALPHA, 'area': AREA_WALL_N}
+    wall_S = {'R1': wall_R1, 'R2': wall_R2, 'R3': wall_R3, 'C': wall_C, 'alpha': ALPHA, 'area': AREA_WALL_S}
+    wall_E = {'R1': wall_R1, 'R2': wall_R2, 'R3': wall_R3, 'C': wall_C, 'alpha': ALPHA, 'area': AREA_WALL_E}
+    wall_W = {'R1': wall_R1, 'R2': wall_R2, 'R3': wall_R3, 'C': wall_C, 'alpha': ALPHA, 'area': AREA_WALL_W}
 
-    # Windows
+    # Windows (steady state, no thermal mass)
     windows = {
         'R': WINDOW_R,
         'area': AREA_WINDOW,
@@ -91,12 +91,19 @@ def run_simulations() -> tuple:
     T_set = 21.0
     vent_ACH = 0.5
 
-    # Build envelopes
-    env_lw: dict = build_envelope(WALL_R, ROOF_R, C_WALL_LW, C_ROOF_LW)
-    env_hw: dict = build_envelope(WALL_R_HW, ROOF_R_HW, C_WALL_HW, C_ROOF_HW)
+    # Build envelopes with 3-resistance model
+    env_lw: dict = build_envelope_3r(
+        WALL_R1_LW, WALL_R2_LW, WALL_R3_LW, WALL_CA_LW,
+        ROOF_R1, ROOF_R2, ROOF_R3, ROOF_CA_LW
+    )
+    env_hw: dict = build_envelope_3r(
+        WALL_R1_HW, WALL_R2_HW, WALL_R3_HW, WALL_CA_HW,
+        ROOF_R1, ROOF_R2, ROOF_R3, ROOF_CA_HW
+    )
 
-    print(f"Lightweight C: {C_WALL_LW/1e6:.2f} MJ/K (walls), {C_ROOF_LW/1e6:.2f} MJ/K (roof)")
-    print(f"Heavyweight C: {C_WALL_HW/1e6:.2f} MJ/K (walls), {C_ROOF_HW/1e6:.2f} MJ/K (roof)")
+    print(f"Lightweight: wall C/A={WALL_CA_LW} kJ/m²K, roof C/A={ROOF_CA_LW} kJ/m²K")
+    print(f"Heavyweight: wall C/A={WALL_CA_HW} kJ/m²K, roof C/A={ROOF_CA_HW} kJ/m²K")
+    print(f"Total C: LW={C_WALL_LW/1e6:.2f}+{C_ROOF_LW/1e6:.2f} MJ/K, HW={C_WALL_HW/1e6:.2f}+{C_ROOF_HW/1e6:.2f} MJ/K")
 
     # Run simulations
     print("\nRunning simulations...")
@@ -148,8 +155,9 @@ if __name__ == '__main__':
     print_results(res_lw, res_hw)
 
     print("\nGenerating plots...")
-    plot_rc_winter_week(res_lw, res_hw, weather)
+    plot_rc_heatup_week(res_lw, res_hw, weather)
     plot_rc_shoulder_week(res_lw, res_hw, weather)
+    plot_rc_shoulder_heating(res_lw, res_hw, weather)
     plot_heating_histogram(res_lw, res_hw)
     plot_heating_comparison_histogram(res_lw, res_hw)
     plot_monthly_peak_demand(res_lw, res_hw)

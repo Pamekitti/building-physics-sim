@@ -1,46 +1,33 @@
-# BESTEST Case 900 - Heavyweight building
-# Same geometry as Case 600, different wall/roof construction
+# BESTEST Case 600/900 - RC Model Parameters
+# 3-resistance model following Gori (2017)
 
 from config import (
-    FLOOR_AREA, BUILDING_HEIGHT, BUILDING_VOLUME,
-    AREA_ROOF, AREA_WALL_N, AREA_WALL_S, AREA_WALL_E, AREA_WALL_W, AREA_WINDOW,
-    ALPHA, EPSILON, SHGC, WINDOW_R,
-    R_SI, R_SE, H_E,
-    RHO_AIR, CP_AIR,
-    INFILTRATION_ACH, INTERNAL_GAIN_W
+    AREA_ROOF, AREA_WALL_N, AREA_WALL_S, AREA_WALL_E, AREA_WALL_W,
 )
-
-# Heavyweight wall (outside to inside):
-# wood siding | foam insulation | concrete block | internal surface
-
-WALL_LAYERS_HW = {
-    'external_surface': {'d': None,  'k': None,  'rho': None,  'cp': None,  'r': 0.034},
-    'wood_siding':      {'d': 0.009, 'k': 0.140, 'rho': 530,   'cp': 900,   'r': 0.064},
-    'foam_insulation':  {'d': 0.0615,'k': 0.040, 'rho': 10,    'cp': 1400,  'r': 1.537},
-    'concrete_block':   {'d': 0.100, 'k': 0.510, 'rho': 1400,  'cp': 1000,  'r': 0.196},
-    'internal_surface': {'d': None,  'k': None,  'rho': None,  'cp': None,  'r': 0.121},
-}
-
-# Heavyweight roof (outside to inside):
-# roof deck | fiberglass | concrete slab | internal surface
-
-ROOF_LAYERS_HW = {
-    'external_surface': {'d': None,  'k': None,  'rho': None,  'cp': None,  'r': 0.034},
-    'roof_deck':        {'d': 0.019, 'k': 0.140, 'rho': 530,   'cp': 900,   'r': 0.136},
-    'fiberglass':       {'d': 0.1118,'k': 0.040, 'rho': 12,    'cp': 840,   'r': 2.795},
-    'concrete_slab':    {'d': 0.080, 'k': 1.130, 'rho': 1400,  'cp': 1000,  'r': 0.071},
-    'internal_surface': {'d': None,  'k': None,  'rho': None,  'cp': None,  'r': 0.121},
-}
-
-WALL_R_HW = sum(L['r'] for L in WALL_LAYERS_HW.values())
-ROOF_R_HW = sum(L['r'] for L in ROOF_LAYERS_HW.values())
 
 TOTAL_WALL_AREA = AREA_WALL_N + AREA_WALL_S + AREA_WALL_E + AREA_WALL_W
 
-# C = rho * cp * d * A
-C_WALL_HW = WALL_LAYERS_HW['concrete_block']['rho'] * WALL_LAYERS_HW['concrete_block']['cp'] * WALL_LAYERS_HW['concrete_block']['d'] * TOTAL_WALL_AREA
-C_ROOF_HW = ROOF_LAYERS_HW['concrete_slab']['rho'] * ROOF_LAYERS_HW['concrete_slab']['cp'] * ROOF_LAYERS_HW['concrete_slab']['d'] * AREA_ROOF
+# Lightweight wall (Case 600)
+WALL_R1_LW = 0.121 + 0.075  # R_si + R_plasterboard
+WALL_R2_LW = 1.650 + 0.064  # R_fiberglass + R_wood
+WALL_R3_LW = 0.034  # R_se
+WALL_CA_LW = 950 * 840 * 0.012 / 1000  # C/A = rho * cp * d / 1000 [kJ/m²K]
 
-# Lightweight capacitances (plasterboard only)
-C_WALL_LW = 950 * 840 * 0.012 * TOTAL_WALL_AREA
-C_ROOF_LW = 950 * 840 * 0.010 * AREA_ROOF
+# Heavyweight wall (Case 900)
+WALL_R1_HW = 0.121 + 0.196  # R_si + R_concrete
+WALL_R2_HW = 1.537 + 0.064  # R_foam + R_wood
+WALL_R3_HW = 0.034  # R_se
+WALL_CA_HW = 1400 * 1000 * 0.100 / 1000  # C/A = rho * cp * d / 1000 [kJ/m²K]
+
+# Roof (same for both cases)
+ROOF_R1 = 0.121 + 0.063  # R_si + R_plasterboard
+ROOF_R2 = 2.794 + 0.136  # R_fiberglass + R_deck
+ROOF_R3 = 0.034  # R_se
+ROOF_CA_LW = 950 * 840 * 0.010 / 1000  # plasterboard only
+ROOF_CA_HW = ROOF_CA_LW  # Same roof construction for both cases (per A.3.2.5)
+
+# Total capacitance
+C_WALL_LW = WALL_CA_LW * 1000 * TOTAL_WALL_AREA
+C_WALL_HW = WALL_CA_HW * 1000 * TOTAL_WALL_AREA
+C_ROOF_LW = ROOF_CA_LW * 1000 * AREA_ROOF
+C_ROOF_HW = ROOF_CA_HW * 1000 * AREA_ROOF
