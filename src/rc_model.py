@@ -37,26 +37,34 @@ def run_rc_hourly(
     air,
     T_set: float,
     vent_ACH: float,
-    gains
+    gains,
+    dt_minutes: int = 15
 ) -> pd.DataFrame:
-    """Run hourly RC simulation for building."""
+    """Run RC simulation for building with specified timestep."""
 
-    weather: pd.DataFrame = weather.copy().reset_index(drop=True)
-    n_hours = len(weather)
-    tau = 3600
+    # Interpolate weather to finer timestep
+    weather_hourly: pd.DataFrame = weather.copy().reset_index(drop=True)
+    weather_hourly = weather_hourly.set_index('timestamp')
 
-    T_out: np.ndarray = weather['T_out_C'].values
-    T_int: np.ndarray = np.full(n_hours, T_set)
+    # Resample to dt_minutes intervals
+    weather_interp = weather_hourly.resample(f'{dt_minutes}min').interpolate(method='linear')
+    weather_interp = weather_interp.reset_index()
+
+    n_steps = len(weather_interp)
+    tau = dt_minutes * 60  # Convert to seconds
+
+    T_out: np.ndarray = weather_interp['T_out_C'].values
+    T_int: np.ndarray = np.full(n_steps, T_set)
 
     roof = envelope['roof']
     walls = envelope['walls']
     windows = envelope['windows']
 
     # Sol-air temperature for each surface
-    theta_s: np.ndarray = weather['theta_s_deg'].values
-    phi_s: np.ndarray = weather['phi_s_deg'].values
-    I_dir: np.ndarray = weather['I_dir_Wm2'].values
-    I_dif: np.ndarray = weather['I_dif_Wm2'].values
+    theta_s: np.ndarray = weather_interp['theta_s_deg'].values
+    phi_s: np.ndarray = weather_interp['phi_s_deg'].values
+    I_dir: np.ndarray = weather_interp['I_dir_Wm2'].values
+    I_dif: np.ndarray = weather_interp['I_dif_Wm2'].values
 
     cos_i_roof: np.ndarray = cos_inc(theta_s, phi_s, 0, 0)
     cos_i_N: np.ndarray = cos_inc(theta_s, phi_s, 90, 0)
@@ -77,14 +85,14 @@ def run_rc_hourly(
     T_sol_W: np.ndarray = sol_air(T_out, I_sol_W, walls['W']['alpha'], H_E)
 
     # Thermal mass temperatures (init at 10C)
-    T_C_roof: np.ndarray = np.full(n_hours, 10.0)
-    T_C_N: np.ndarray = np.full(n_hours, 10.0)
-    T_C_S: np.ndarray = np.full(n_hours, 10.0)
-    T_C_E: np.ndarray = np.full(n_hours, 10.0)
-    T_C_W: np.ndarray = np.full(n_hours, 10.0)
+    T_C_roof: np.ndarray = np.full(n_steps, 10.0)
+    T_C_N: np.ndarray = np.full(n_steps, 10.0)
+    T_C_S: np.ndarray = np.full(n_steps, 10.0)
+    T_C_E: np.ndarray = np.full(n_steps, 10.0)
+    T_C_W: np.ndarray = np.full(n_steps, 10.0)
 
     # Time stepping
-    for p in range(1, n_hours):
+    for p in range(1, n_steps):
         T_C_roof[p] = calc_T_C(T_C_roof[p-1], T_int[p], T_int[p-1], T_sol_roof[p], T_sol_roof[p-1],
                                roof['R1'], roof['R2'], roof['C'], tau)
         T_C_N[p] = calc_T_C(T_C_N[p-1], T_int[p], T_int[p-1], T_sol_N[p], T_sol_N[p-1],
@@ -127,7 +135,7 @@ def run_rc_hourly(
         R_vent = 1.0 / (RHO_AIR * CP_AIR * Vdot_vent)
         Q_vent: np.ndarray = (T_int - T_out) / R_vent
     else:
-        Q_vent: np.ndarray = np.zeros(n_hours)
+        Q_vent: np.ndarray = np.zeros(n_steps)
 
     # Internal gains
     Q_int = gains.total() * 1000
@@ -136,7 +144,7 @@ def run_rc_hourly(
     Q_heat: np.ndarray = np.maximum(0, Q_roof + Q_walls + Q_win + Q_inf + Q_vent - Q_solar - Q_int)
 
     return pd.DataFrame({
-        'timestamp': weather['timestamp'],
+        'timestamp': weather_interp['timestamp'],
         'T_out_C': T_out,
         'T_int_C': T_int,
         'T_C_roof': T_C_roof,

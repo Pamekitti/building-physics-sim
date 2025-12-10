@@ -19,7 +19,9 @@ from config_heavyweight import (
 from src.building import AirSide, InternalGains
 from src.weather import load_epw_weather
 from src.rc_model import run_rc_hourly
-from src.rc_plots import plot_rc_comparison
+from src.rc_plots import (plot_rc_winter_week, plot_rc_shoulder_week,
+                          plot_heating_histogram, plot_heating_comparison_histogram,
+                          plot_monthly_peak_demand)
 
 
 def build_envelope(wall_R: float, roof_R: float, C_wall_total: float, C_roof: float) -> dict:
@@ -83,11 +85,11 @@ def run_simulations() -> tuple:
     })
     weather = weather.sort_values('timestamp').reset_index(drop=True)
 
-    # Building parameters
+    # Building parameters (same as Task 1)
     air = AirSide(BUILDING_VOLUME, 0.0, 0.0, INFILTRATION_ACH)
     gains = InternalGains(INTERNAL_GAIN_W / 1000)
-    T_set = 20.0
-    vent_ACH = 0.0
+    T_set = 21.0
+    vent_ACH = 0.5
 
     # Build envelopes
     env_lw: dict = build_envelope(WALL_R, ROOF_R, C_WALL_LW, C_ROOF_LW)
@@ -101,19 +103,27 @@ def run_simulations() -> tuple:
     res_lw: pd.DataFrame = run_rc_hourly(weather, env_lw, air, T_set, vent_ACH, gains)
     res_hw: pd.DataFrame = run_rc_hourly(weather, env_hw, air, T_set, vent_ACH, gains)
 
-    return res_lw, res_hw, T_set
+    return res_lw, res_hw, weather
 
 
 def print_results(res_lw: pd.DataFrame, res_hw: pd.DataFrame) -> None:
-    """Print annual heating and thermal mass statistics."""
+    """Print heating load and thermal mass statistics."""
 
-    kwh_lw = res_lw['Q_heat_W'].sum() / 1000
-    kwh_hw = res_hw['Q_heat_W'].sum() / 1000
+    # Heating load stats (kW)
+    Q_lw = res_lw['Q_heat_W'].values / 1000
+    Q_hw = res_hw['Q_heat_W'].values / 1000
 
-    print("\nAnnual heating:")
-    print(f"  Lightweight: {kwh_lw:.0f} kWh ({kwh_lw/FLOOR_AREA:.1f} kWh/m2)")
-    print(f"  Heavyweight: {kwh_hw:.0f} kWh ({kwh_hw/FLOOR_AREA:.1f} kWh/m2)")
-    print(f"  Difference: {kwh_hw - kwh_lw:.0f} kWh ({(kwh_hw/kwh_lw - 1)*100:.1f}%)")
+    # Total annual heating (kWh) - sum of Q * dt (15 min = 0.25 hr)
+    dt_hours = 0.25
+    total_lw = (Q_lw * dt_hours).sum()
+    total_hw = (Q_hw * dt_hours).sum()
+
+    print("\nHeating load (kW):")
+    print(f"  Lightweight: mean={Q_lw.mean():.3f}, std={Q_lw.std():.3f}")
+    print(f"  Heavyweight: mean={Q_hw.mean():.3f}, std={Q_hw.std():.3f}")
+    print(f"\nAnnual heating (kWh):")
+    print(f"  Lightweight: {total_lw:.1f} kWh")
+    print(f"  Heavyweight: {total_hw:.1f} kWh ({(total_hw - total_lw) / total_lw * 100:+.1f}%)")
 
     print("\nThermal mass temps (mean/std):")
     surfaces = [
@@ -134,6 +144,14 @@ def print_results(res_lw: pd.DataFrame, res_hw: pd.DataFrame) -> None:
 if __name__ == '__main__':
     os.makedirs('outputs', exist_ok=True)
 
-    res_lw, res_hw, T_set = run_simulations()
+    res_lw, res_hw, weather = run_simulations()
     print_results(res_lw, res_hw)
-    plot_rc_comparison(res_lw, res_hw, T_set)
+
+    print("\nGenerating plots...")
+    plot_rc_winter_week(res_lw, res_hw, weather)
+    plot_rc_shoulder_week(res_lw, res_hw, weather)
+    plot_heating_histogram(res_lw, res_hw)
+    plot_heating_comparison_histogram(res_lw, res_hw)
+    plot_monthly_peak_demand(res_lw, res_hw)
+
+    print("\nDone.")
