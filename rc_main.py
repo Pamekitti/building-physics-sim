@@ -19,9 +19,9 @@ from config_heavyweight import (
 from src.building import AirSide, InternalGains
 from src.weather import load_epw_weather
 from src.rc_model import run_rc_hourly
-from src.rc_plots import (plot_rc_heatup_week, plot_rc_shoulder_week, plot_rc_shoulder_heating,
-                          plot_heating_histogram, plot_heating_comparison_histogram,
-                          plot_monthly_peak_demand)
+from src.rc_plots import (plot_glasgow_weather, plot_rc_heatup_week, plot_rc_shoulder_week,
+                          plot_rc_shoulder_heating, plot_heating_histogram,
+                          plot_heating_comparison_histogram, plot_monthly_peak_demand)
 
 
 def build_envelope_3r(wall_R1, wall_R2, wall_R3, wall_CA,
@@ -155,6 +155,7 @@ if __name__ == '__main__':
     print_results(res_lw, res_hw)
 
     print("\nGenerating plots...")
+    plot_glasgow_weather(weather)
     plot_rc_heatup_week(res_lw, res_hw, weather)
     plot_rc_shoulder_week(res_lw, res_hw, weather)
     plot_rc_shoulder_heating(res_lw, res_hw, weather)

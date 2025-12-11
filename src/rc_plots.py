@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import matplotlib.dates as mdates
 
 COLORS = {
     'lw': '#2563EB',
@@ -11,6 +12,8 @@ COLORS = {
     'outdoor': '#1B4D3E',
     'irr': '#D35400',
     'setpoint': '#888888',
+    'dir': '#E74C3C',
+    'dif': '#3498DB',
 }
 
 plt.rcParams.update({
@@ -560,6 +563,78 @@ def plot_monthly_peak_demand(res_lw, res_hw, output_path='outputs/rc_peak_demand
     ax.text(0.02, 0.98, f'Annual peak: LW={annual_lw:.2f} kW, HW={annual_hw:.2f} kW ({pct_diff:+.1f}%)',
             transform=ax.transAxes, fontsize=9, va='top', ha='left',
             bbox=dict(boxstyle='round', facecolor='white', edgecolor='gray', alpha=0.9))
+
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+    plt.close(fig)
+    print(f"Saved: {output_path}")
+
+
+def plot_glasgow_weather(weather: pd.DataFrame, output_path: str = 'outputs/glasgow_weather.png'):
+    """Plot Glasgow annual weather data for report introduction.
+
+    Shows dry bulb temperature and solar irradiance (direct + diffuse) to illustrate
+    cloudy, heating-dominated climate.
+    """
+    weather = weather.copy()
+    weather['timestamp'] = pd.to_datetime(weather['timestamp'])
+    weather = weather.set_index('timestamp')
+
+    # Resample to daily for cleaner visualization
+    daily = weather.resample('D').agg({
+        'T_out_C': ['mean', 'min', 'max'],
+        'I_dir_Wm2': 'mean',
+        'I_dif_Wm2': 'mean',
+    })
+    daily.columns = ['T_mean', 'T_min', 'T_max', 'I_dir', 'I_dif']
+    daily['GHI'] = daily['I_dir'] + daily['I_dif']
+
+    fig, axes = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
+
+    # Panel 1: Temperature
+    ax1 = axes[0]
+    ax1.fill_between(daily.index, daily['T_min'], daily['T_max'],
+                     alpha=0.3, color=COLORS['outdoor'], label='Daily range')
+    ax1.plot(daily.index, daily['T_mean'], color=COLORS['outdoor'], lw=1.2, label='Daily mean')
+    ax1.axhline(21, color=COLORS['setpoint'], ls=':', lw=1, label='Comfort (21°C)')
+    ax1.axhline(0, color='gray', ls='--', lw=0.8, alpha=0.5)
+
+    ax1.set_ylabel('Dry Bulb Temperature (°C)')
+    ax1.set_ylim(-10, 30)
+    ax1.legend(loc='upper right', frameon=True, fancybox=False)
+    ax1.grid(True, alpha=0.3, lw=0.5)
+    ax1.set_title('Glasgow Annual Temperature')
+
+    # Panel 2: Solar irradiance
+    ax2 = axes[1]
+    ax2.fill_between(daily.index, 0, daily['I_dif'], alpha=0.6, color=COLORS['dif'],
+                     label='Diffuse Horizontal Irradiance')
+    ax2.fill_between(daily.index, daily['I_dif'], daily['GHI'], alpha=0.6, color=COLORS['dir'],
+                     label='Direct Normal Irradiance')
+
+    ax2.set_ylabel('Daily Mean Irradiance (W/m²)')
+    ax2.set_xlabel('Month')
+    # Set ylim with gap above max value
+    max_irr = daily['GHI'].max()
+    ax2.set_ylim(0, max_irr * 1.15)
+    ax2.legend(loc='upper right', frameon=True, fancybox=False)
+    ax2.grid(True, alpha=0.3, lw=0.5)
+    ax2.set_title('Glasgow Annual Solar Irradiance')
+
+    # Format x-axis with months
+    ax2.xaxis.set_major_locator(mdates.MonthLocator())
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+
+    # Add stats text
+    mean_temp = weather['T_out_C'].mean()
+    heating_hours = (weather['T_out_C'] < 15).sum()
+    heating_pct = heating_hours / len(weather) * 100
+
+    stats_text = (f'Mean temp: {mean_temp:.1f}°C\n'
+                  f'Hours below 15°C: {heating_hours} ({heating_pct:.0f}%)')
+    ax1.text(0.02, 0.98, stats_text, transform=ax1.transAxes, fontsize=9, va='top', ha='left',
+             bbox=dict(boxstyle='round', facecolor='white', edgecolor='gray', alpha=0.9),
+             family='monospace')
 
     plt.tight_layout()
     fig.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
