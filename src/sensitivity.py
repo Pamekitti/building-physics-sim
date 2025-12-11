@@ -192,7 +192,7 @@ def calc_nsi(df: pd.DataFrame, param: str, period: str = 'w') -> float:
 
 
 def calc_sensitivity_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate sensitivity table with NSI values and rankings."""
+    """Calculate sensitivity table with NSC values and rankings."""
     param_names = ['Orientation', 'Internal gains', 'Insulation k', 'Temp offset', 'Absorptance', 'Infiltration']
     rows = []
 
@@ -202,15 +202,15 @@ def calc_sensitivity_table(df: pd.DataFrame) -> pd.DataFrame:
             'Parameter': param,
             'Q_w_min': subset['Q_w'].min(),
             'Q_w_max': subset['Q_w'].max(),
-            'NSI_w': calc_nsi(df, param, 'w'),
+            'NSC_w': calc_nsi(df, param, 'w'),
             'Q_s_min': subset['Q_s'].min(),
             'Q_s_max': subset['Q_s'].max(),
-            'NSI_s': calc_nsi(df, param, 's'),
+            'NSC_s': calc_nsi(df, param, 's'),
         })
 
     table: pd.DataFrame = pd.DataFrame(rows)
-    table['Rank_w'] = table['NSI_w'].abs().rank(ascending=False).astype(int)
-    table['Rank_s'] = table['NSI_s'].abs().rank(ascending=False).astype(int)
+    table['Rank_w'] = table['NSC_w'].abs().rank(ascending=False).astype(int)
+    table['Rank_s'] = table['NSC_s'].abs().rank(ascending=False).astype(int)
     return table
 
 
@@ -221,8 +221,8 @@ def print_table_7(table: pd.DataFrame) -> None:
 
     for row_index in range(len(table)):
         row = table.iloc[row_index]
-        print(f"{row['Parameter']}: Winter {row['Q_w_min']:.1f}-{row['Q_w_max']:.1f} kWh (NSI={row['NSI_w']:+.3f}), "
-              f"Shoulder {row['Q_s_min']:.1f}-{row['Q_s_max']:.1f} kWh (NSI={row['NSI_s']:+.3f})")
+        print(f"{row['Parameter']}: Winter {row['Q_w_min']:.1f}-{row['Q_w_max']:.1f} kWh (NSC={row['NSC_w']:+.3f}), "
+              f"Shoulder {row['Q_s_min']:.1f}-{row['Q_s_max']:.1f} kWh (NSC={row['NSC_s']:+.3f})")
 
 
 def plot_fig7_scatter(df: pd.DataFrame, path: str) -> None:
@@ -302,9 +302,9 @@ def plot_fig8_ranking(table: pd.DataFrame, path: str) -> None:
     COL_SHOULDER_POS = '#D4740C'
     COL_SHOULDER_NEG = '#E9A35A'
 
-    # Sort by average absolute NSI (largest at top)
+    # Sort by average absolute NSC (largest at top)
     table_sorted: pd.DataFrame = table.copy()
-    table_sorted['avg_abs'] = (table_sorted['NSI_w'].abs() + table_sorted['NSI_s'].abs()) / 2
+    table_sorted['avg_abs'] = (table_sorted['NSC_w'].abs() + table_sorted['NSC_s'].abs()) / 2
     table_sorted = table_sorted.sort_values('avg_abs', ascending=True).reset_index(drop=True)
 
     y_positions: np.ndarray = np.arange(len(table_sorted))
@@ -313,37 +313,37 @@ def plot_fig8_ranking(table: pd.DataFrame, path: str) -> None:
     # Winter bars
     for row_index in range(len(table_sorted)):
         row = table_sorted.iloc[row_index]
-        nsi_winter = row['NSI_w']
-        color = COL_WINTER_POS if nsi_winter >= 0 else COL_WINTER_NEG
+        nsc_winter = row['NSC_w']
+        color = COL_WINTER_POS if nsc_winter >= 0 else COL_WINTER_NEG
         label = 'Winter' if row_index == 0 else ''
-        ax.barh(row_index - bar_height / 2, nsi_winter, bar_height, color=color, edgecolor='none', label=label)
+        ax.barh(row_index - bar_height / 2, nsc_winter, bar_height, color=color, edgecolor='none', label=label)
 
-        text_offset = 0.02 if nsi_winter >= 0 else -0.02
-        text_align = 'left' if nsi_winter >= 0 else 'right'
-        ax.text(nsi_winter + text_offset, row_index - bar_height / 2, f'{nsi_winter:+.3f}',
+        text_offset = 0.02 if nsc_winter >= 0 else -0.02
+        text_align = 'left' if nsc_winter >= 0 else 'right'
+        ax.text(nsc_winter + text_offset, row_index - bar_height / 2, f'{nsc_winter:+.3f}',
                 va='center', ha=text_align, fontsize=8, color=color)
 
     # Shoulder bars
     for row_index in range(len(table_sorted)):
         row = table_sorted.iloc[row_index]
-        nsi_shoulder = row['NSI_s']
-        color = COL_SHOULDER_POS if nsi_shoulder >= 0 else COL_SHOULDER_NEG
+        nsc_shoulder = row['NSC_s']
+        color = COL_SHOULDER_POS if nsc_shoulder >= 0 else COL_SHOULDER_NEG
         label = 'Shoulder' if row_index == 0 else ''
-        ax.barh(row_index + bar_height / 2, nsi_shoulder, bar_height, color=color, edgecolor='none', label=label)
+        ax.barh(row_index + bar_height / 2, nsc_shoulder, bar_height, color=color, edgecolor='none', label=label)
 
-        text_offset = 0.02 if nsi_shoulder >= 0 else -0.02
-        text_align = 'left' if nsi_shoulder >= 0 else 'right'
-        ax.text(nsi_shoulder + text_offset, row_index + bar_height / 2, f'{nsi_shoulder:+.3f}',
+        text_offset = 0.02 if nsc_shoulder >= 0 else -0.02
+        text_align = 'left' if nsc_shoulder >= 0 else 'right'
+        ax.text(nsc_shoulder + text_offset, row_index + bar_height / 2, f'{nsc_shoulder:+.3f}',
                 va='center', ha=text_align, fontsize=8, color=color)
 
     ax.set_yticks(y_positions)
     ax.set_yticklabels(table_sorted['Parameter'])
     ax.axvline(x=0, color='black', linewidth=0.8)
-    ax.set_xlabel('NSI (Normalised Sensitivity Index)')
+    ax.set_xlabel('NSC (Normalised Sensitivity Coefficient)')
     ax.grid(True, axis='x', alpha=0.3, lw=0.5)
 
-    max_abs_nsi = max(table_sorted['NSI_w'].abs().max(), table_sorted['NSI_s'].abs().max())
-    x_limit = max_abs_nsi * 1.4
+    max_abs_nsc = max(table_sorted['NSC_w'].abs().max(), table_sorted['NSC_s'].abs().max())
+    x_limit = max_abs_nsc * 1.4
     ax.set_xlim(-x_limit, x_limit)
 
     ax.legend(loc='lower right', frameon=True, fancybox=False)
