@@ -181,14 +181,17 @@ def plot_rc_heatup_week(res_lw: pd.DataFrame, res_hw: pd.DataFrame, weather: pd.
     n_steps = len(data_lw)
     steps = np.arange(n_steps)
 
-    # X-axis labels
+    # X-axis labels - show 00:00 and 12:00
     timestamps = data_lw['timestamp']
     tick_positions = []
     tick_labels = []
     for i, ts in enumerate(timestamps):
         if ts.hour == 0 and ts.minute == 0:
             tick_positions.append(i)
-            tick_labels.append(ts.strftime('%a %d/%m'))
+            tick_labels.append(ts.strftime('%a %d/%m\n00:00'))
+        elif ts.hour == 12 and ts.minute == 0:
+            tick_positions.append(i)
+            tick_labels.append('12:00')
 
     fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
@@ -201,7 +204,7 @@ def plot_rc_heatup_week(res_lw: pd.DataFrame, res_hw: pd.DataFrame, weather: pd.
     ax1.axhline(10, color='gray', ls=':', lw=1, alpha=0.5, label='Initial (10°C)')
 
     ax1.set_ylabel('Temperature (°C)')
-    ax1.set_ylim(5, 25)
+    ax1.set_ylim(0, 25)
     ax1.legend(loc='lower right', frameon=True, fancybox=False, ncol=2)
     ax1.grid(True, alpha=0.3, lw=0.5)
     ax1.set_title('Heat-up Week - South Wall Thermal Mass Temperature (Initial T=10°C)')
@@ -280,14 +283,17 @@ def plot_rc_shoulder_week(res_lw: pd.DataFrame, res_hw: pd.DataFrame, weather: p
     n_steps = len(data_lw)
     steps = np.arange(n_steps)
 
-    # X-axis labels
+    # X-axis labels - show 00:00 and 12:00
     timestamps = data_lw['timestamp']
     tick_positions = []
     tick_labels = []
     for i, ts in enumerate(timestamps):
         if ts.hour == 0 and ts.minute == 0:
             tick_positions.append(i)
-            tick_labels.append(ts.strftime('%a %d/%m'))
+            tick_labels.append(ts.strftime('%a %d/%m\n00:00'))
+        elif ts.hour == 12 and ts.minute == 0:
+            tick_positions.append(i)
+            tick_labels.append('12:00')
 
     fig, ax = plt.subplots(figsize=(12, 5))
 
@@ -299,7 +305,7 @@ def plot_rc_shoulder_week(res_lw: pd.DataFrame, res_hw: pd.DataFrame, weather: p
 
     ax.set_ylabel('Temperature (°C)')
     ax.set_xlabel('Date')
-    ax.set_ylim(5, 25)
+    ax.set_ylim(0, 25)
     ax.legend(loc='lower right', frameon=True, fancybox=False)
     ax.grid(True, alpha=0.3, lw=0.5)
     ax.set_title('Shoulder Week - South Wall Thermal Mass Temperature')
@@ -344,14 +350,17 @@ def plot_rc_shoulder_heating(res_lw: pd.DataFrame, res_hw: pd.DataFrame, weather
     n_steps = len(data_lw)
     steps = np.arange(n_steps)
 
-    # X-axis labels
+    # X-axis labels - show 00:00 and 12:00
     timestamps = data_lw['timestamp']
     tick_positions = []
     tick_labels = []
     for i, ts in enumerate(timestamps):
         if ts.hour == 0 and ts.minute == 0:
             tick_positions.append(i)
-            tick_labels.append(ts.strftime('%a %d/%m'))
+            tick_labels.append(ts.strftime('%a %d/%m\n00:00'))
+        elif ts.hour == 12 and ts.minute == 0:
+            tick_positions.append(i)
+            tick_labels.append('12:00')
 
     fig, ax = plt.subplots(figsize=(12, 5))
 
