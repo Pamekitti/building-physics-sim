@@ -88,7 +88,6 @@ def run_sensitivity(weather: pd.DataFrame, winter_mask, shoulder_mask) -> pd.Dat
     base_shoulder_kWh = base_result[shoulder_mask]['Q_heat_W'].sum() / 1000
 
     # Orientation sensitivity
-    print("  Orientation...")
     orientation_values: np.ndarray = np.arange(0, 360, 30)
     for azimuth in orientation_values:
         result: pd.DataFrame = run_hourly(weather, base_planes(azimuth), air, T_set, vent_ACH=vent_ACH, gains=gains)
@@ -101,7 +100,6 @@ def run_sensitivity(weather: pd.DataFrame, winter_mask, shoulder_mask) -> pd.Dat
         })
 
     # Internal gains sensitivity
-    print("  Internal gains...")
     internal_gain_values: np.ndarray = np.linspace(100, 400, 10)
     for Q_internal in internal_gain_values:
         gains_varied = InternalGains(Q_internal / 1000)
@@ -115,7 +113,6 @@ def run_sensitivity(weather: pd.DataFrame, winter_mask, shoulder_mask) -> pd.Dat
         })
 
     # Insulation conductivity sensitivity
-    print("  Insulation conductivity...")
     k_values: np.ndarray = np.linspace(0.030, 0.050, 11)
     for k_insulation in k_values:
         result: pd.DataFrame = run_hourly(weather, planes_with_insulation(k_insulation), air, T_set, vent_ACH=vent_ACH, gains=gains)
@@ -128,7 +125,6 @@ def run_sensitivity(weather: pd.DataFrame, winter_mask, shoulder_mask) -> pd.Dat
         })
 
     # Temperature offset sensitivity
-    print("  Temperature offset...")
     temp_offset_values: np.ndarray = np.linspace(-2, 2, 9)
     for dT in temp_offset_values:
         weather_modified: pd.DataFrame = weather.copy()
@@ -143,7 +139,6 @@ def run_sensitivity(weather: pd.DataFrame, winter_mask, shoulder_mask) -> pd.Dat
         })
 
     # Absorptance sensitivity
-    print("  Surface absorptance...")
     absorptance_values: np.ndarray = np.linspace(0.3, 0.9, 13)
     for alpha_varied in absorptance_values:
         result: pd.DataFrame = run_hourly(weather, base_planes(alpha=alpha_varied), air, T_set, vent_ACH=vent_ACH, gains=gains)
@@ -156,7 +151,6 @@ def run_sensitivity(weather: pd.DataFrame, winter_mask, shoulder_mask) -> pd.Dat
         })
 
     # Infiltration sensitivity
-    print("  Infiltration ACH...")
     infiltration_values: np.ndarray = np.linspace(0.2, 1.0, 11)
     for ach_varied in infiltration_values:
         air_varied = AirSide(BUILDING_VOLUME, VENT_FLOW, HRV_EFF, ach_varied)
@@ -212,17 +206,6 @@ def calc_sensitivity_table(df: pd.DataFrame) -> pd.DataFrame:
     table['Rank_w'] = table['NSC_w'].abs().rank(ascending=False).astype(int)
     table['Rank_s'] = table['NSC_s'].abs().rank(ascending=False).astype(int)
     return table
-
-
-def print_table_7(table: pd.DataFrame) -> None:
-    """Print sensitivity analysis results."""
-    print("\nSensitivity Analysis Results")
-    print("-" * 80)
-
-    for row_index in range(len(table)):
-        row = table.iloc[row_index]
-        print(f"{row['Parameter']}: Winter {row['Q_w_min']:.1f}-{row['Q_w_max']:.1f} kWh (NSC={row['NSC_w']:+.3f}), "
-              f"Shoulder {row['Q_s_min']:.1f}-{row['Q_s_max']:.1f} kWh (NSC={row['NSC_s']:+.3f})")
 
 
 def plot_fig7_scatter(df: pd.DataFrame, path: str) -> None:

@@ -59,52 +59,6 @@ def _save(fig, path):
     plt.close(fig)
 
 
-def print_table_4(results):
-    print("\nHeat Flow Breakdown (S1)")
-    print("-" * 50)
-
-    s1 = results["S1"]
-    losses = {
-        "Walls": s1["Q_walls_W"].sum() / 1000,
-        "Roof": s1["Q_roof_W"].sum() / 1000,
-        "Windows": s1["Q_win_W"].sum() / 1000,
-        "Infiltration": s1["Q_inf_W"].sum() / 1000,
-        "Ventilation": s1["Q_vent_W"].sum() / 1000,
-    }
-    gains = {
-        "Solar": s1["Q_solar_W"].sum() / 1000,
-        "Internal": s1["Q_int_W"].sum() / 1000,
-        "Heating": s1["Q_heat_W"].sum() / 1000,
-    }
-    total_loss = sum(losses.values())
-    total_gain = sum(gains.values())
-
-    print("Losses:")
-    for k, v in losses.items():
-        print(f"  {k}: {v:.0f} kWh ({v/total_loss*100:.1f}%)")
-    print(f"  Total: {total_loss:.0f} kWh")
-
-    print("Gains:")
-    for k, v in gains.items():
-        print(f"  {k}: {v:.0f} kWh ({v/total_gain*100:.1f}%)")
-    print(f"  Total: {total_gain:.0f} kWh")
-
-
-def print_table_5(results, floor_area):
-    print("\nAnnual Heating Comparison")
-    print("-" * 50)
-
-    base = results["S1"]["Q_heat_W"].sum() / 1000
-    for s in ["S1", "S2", "S3", "S4"]:
-        kwh = results[s]["Q_heat_W"].sum() / 1000
-        intensity = kwh / floor_area
-        if s == "S1":
-            print(f"{s}: {kwh:.0f} kWh ({intensity:.1f} kWh/m2)")
-        else:
-            diff = (kwh - base) / base * 100
-            print(f"{s}: {kwh:.0f} kWh ({intensity:.1f} kWh/m2, {diff:+.1f}% vs S1)")
-
-
 def plot_fig2_monthly(results, weather, path):
     fig, ax1 = plt.subplots(figsize=(11, 5.5))
     months = [
