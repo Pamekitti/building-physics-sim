@@ -1,4 +1,3 @@
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,35 +7,13 @@ build/
 dist/
 *.egg-info/
 *.egg
-
-# Virtual environments
 .venv/
 venv/
 ENV/
 env/
-
-# IDE / Editor
 .vscode/
 .idea/
-.cursor/
-.claude/
 *.swp
 *.swo
-
-# OS files
 .DS_Store
 Thumbs.db
-
-# Test / Coverage
-.coverage
-.pytest_cache/
-htmlcov/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Weather data (large files - download separately)
-weather_files/
-
-# Generated plots (reproducible from code)
-plots/
